@@ -4,8 +4,6 @@
 It is built with **Tauri**, **Rust**, **Next.js**, and **TypeScript**.
 BucketDock gives you a desktop-style interface for browsing buckets, uploading files, downloading objects, deleting files, and managing object metadata without using the AWS CLI or a browser dashboard.
 
----
-
 ## Features
 
 ### Storage providers
@@ -58,8 +56,6 @@ BucketDock gives you a desktop-style interface for browsing buckets, uploading f
 - Dark mode
 - Keyboard shortcuts
 
----
-
 ## Tech Stack
 
 ### Frontend
@@ -82,8 +78,6 @@ BucketDock gives you a desktop-style interface for browsing buckets, uploading f
 - `tokio`
 - `serde`
 - `keyring`
-
----
 
 ## Architecture
 
@@ -112,11 +106,9 @@ All storage operations are handled by Rust through Tauri commands.
 
 This keeps credentials out of frontend code and avoids exposing secrets to browser APIs.
 
----
-
 ## Security Model
 
-### BucketDock is designed so that:
+BucketDock is designed so that:
 
 - S3 credentials are not stored in frontend code
 - secrets are not stored in localStorage
@@ -125,8 +117,6 @@ This keeps credentials out of frontend code and avoids exposing secrets to brows
 - profile config stores only non-secret metadata
 - credentials are never logged
 - S3 operations are performed only from the Rust backend
-
----
 
 ## Project Structure
 
@@ -163,8 +153,6 @@ bucketdock/
 └── README.md
 ```
 
----
-
 ## Getting Started
 
 ### Prerequisites
@@ -180,8 +168,6 @@ For Tauri setup instructions, see:
 
 https://tauri.app/start/prerequisites/
 
----
-
 ### Install Dependencies
 
 Using npm:
@@ -196,8 +182,6 @@ Using pnpm:
 pnpm install
 ```
 
----
-
 ### Run in Development
 
 ```bash
@@ -209,8 +193,6 @@ or:
 ```bash
 pnpm tauri dev
 ```
-
----
 
 ### Build the macOS App
 
@@ -230,9 +212,7 @@ The built app will be created inside:
 src-tauri/target/release/bundle/
 ```
 
----
-
-### Next.js Static Export
+## Next.js Static Export
 
 BucketDock is intended to run as a static frontend inside Tauri.
 
@@ -248,13 +228,11 @@ const nextConfig = {
 export default nextConfig;
 ```
 
----
-
-### Cloudflare R2 Setup
+## Cloudflare R2 Setup
 
 Cloudflare R2 is S3-compatible, but it uses slightly different configuration from AWS S3.
 
-Standard R2 endpoint
+### Standard R2 endpoint
 
 Use:
 
@@ -290,7 +268,7 @@ Endpoint: https://9cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.cloudflarestorage.com/attr
 Bucket: attributionhub
 ```
 
-EU / jurisdiction-specific R2 endpoint
+### EU / jurisdiction-specific R2 endpoint
 
 For jurisdiction-specific buckets, use the jurisdiction in the endpoint.
 
@@ -311,9 +289,7 @@ Region: auto
 Path-style addressing: true
 ```
 
----
-
-### AWS S3 Setup
+## AWS S3 Setup
 
 For AWS S3, use the normal AWS region and bucket name.
 
@@ -329,9 +305,7 @@ Path-style addressing: false
 
 For AWS S3-compatible custom endpoints, provide the endpoint URL manually.
 
----
-
-### Custom S3-Compatible Setup
+## Custom S3-Compatible Setup
 
 Example for a custom S3-compatible provider:
 
@@ -354,8 +328,6 @@ If connection testing works but listing objects fails, check:
 - access key permissions
 - secret key
 - whether the bucket name was accidentally added to the endpoint
-
----
 
 ## Common Cloudflare R2 Error
 
@@ -393,8 +365,6 @@ Also make sure:
 - bucket name contains only the bucket name
 - test connection and object listing use the same normalized profile config
 
----
-
 ## Planned Tauri Commands
 
 BucketDock uses Tauri commands to communicate between the frontend and Rust backend.
@@ -431,8 +401,6 @@ choose_files()
 choose_folder()
 ```
 
----
-
 ## Keyboard Shortcuts
 
 ```text
@@ -448,8 +416,6 @@ Cmd + F Search/filter
 Cmd + I Show object details
 ```
 
----
-
 ## MVP Scope
 
 The first working version should include:
@@ -464,8 +430,6 @@ The first working version should include:
 - basic metadata details panel
 - Cloudflare R2 support
 - AWS S3 support
-
----
 
 ## Roadmap
 
@@ -486,8 +450,6 @@ The first working version should include:
 - Import/export profiles without secrets
 - App signing and notarization for macOS
 
----
-
 ## Development Notes
 
 S3 key behavior
@@ -506,8 +468,6 @@ The folders photos/ and photos/2026/ are virtual prefixes.
 
 BucketDock treats prefixes as folders in the UI.
 
----
-
 ## Safety
 
 BucketDock should always ask for confirmation before destructive actions.
@@ -519,13 +479,9 @@ Recursive delete must:
 3. Ask for explicit confirmation
 4. Never delete silently
 
----
-
 ## License
 
 This project is not yet licensed.
-
----
 
 ## Name
 
