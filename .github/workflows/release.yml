@@ -1,0 +1,107 @@
+name: Release
+
+# Release Please drives versioning + changelog from Conventional Commits on
+# `main`. When the release PR merges and a new GitHub Release is created we
+# build the macOS desktop app and attach the .dmg/.app bundles to it.
+#
+# Smoke tests must pass before any build artifact is produced.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    uses: ./.github/workflows/smoke.yml
+
+  release-please:
+    name: Release Please
+    needs: smoke
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      upload_url: ${{ steps.release.outputs.upload_url }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-macos:
+    name: Build macOS (${{ matrix.target }})
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: aarch64
+          - target: x86_64-apple-darwin
+            arch: x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build BucketDock
+        run: pnpm tauri build --target ${{ matrix.target }}
+
+      - name: Collect artifacts
+        run: |
+          set -e
+          mkdir -p dist
+          # DMG
+          find src-tauri/target/${{ matrix.target }}/release/bundle/dmg -name '*.dmg' -exec cp {} dist/ \;
+          # .app bundle (zipped for upload)
+          APP_DIR=$(find src-tauri/target/${{ matrix.target }}/release/bundle/macos -maxdepth 1 -name '*.app' | head -n1)
+          if [ -n "$APP_DIR" ]; then
+            APP_NAME=$(basename "$APP_DIR" .app)
+            (cd "$(dirname "$APP_DIR")" && zip -ry "$APP_NAME-${{ matrix.arch }}.zip" "$APP_NAME.app")
+            cp "$(dirname "$APP_DIR")/$APP_NAME-${{ matrix.arch }}.zip" dist/
+          fi
+          ls -lah dist
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
+          files: dist/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

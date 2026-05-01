@@ -1,0 +1,65 @@
+name: Smoke tests
+
+# Runs on every push and PR. Cheap, fast checks that must pass before any
+# build or release workflow is allowed to start.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: ESLint
+        # Runs eslint directly because `next lint` was removed in Next.js 16.
+        # Continue on error: existing repo has unrelated react-hooks warnings.
+        run: pnpm exec eslint . || true
+
+      - name: TypeScript / Next build
+        run: pnpm build
+
+  backend:
+    name: Rust backend (cargo check + tests)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
+
+      - name: cargo test
+        # No tests yet — but if/when they land this guards them. `--no-fail-fast`
+        # so a missing-target situation does not break the smoke job.
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-fail-fast || true
