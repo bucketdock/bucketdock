@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::sync::Mutex;
+use tokio::task::AbortHandle;
 
 use crate::connections::{self, Connection};
 use crate::error::{Error, Result};
@@ -9,6 +10,9 @@ pub struct AppState {
     pub connections: Mutex<HashMap<String, Connection>>,
     #[allow(dead_code)]
     pub data_dir: PathBuf,
+    /// In-flight transfers keyed by transfer id. Used by the transfer queue
+    /// to cancel running uploads/downloads/copies.
+    pub transfers: Mutex<HashMap<String, AbortHandle>>,
 }
 
 impl AppState {
@@ -20,6 +24,7 @@ impl AppState {
         Ok(Self {
             connections: Mutex::new(map),
             data_dir,
+            transfers: Mutex::new(HashMap::new()),
         })
     }
 

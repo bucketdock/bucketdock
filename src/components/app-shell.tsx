@@ -1,12 +1,13 @@
-'use client';
+"use client";
 
-import * as React from 'react';
-import ConnectionsSidebar from './connections-sidebar';
-import ObjectBrowser from './object-browser';
-import { isTauri, listConnections } from '@/lib/tauri';
-import { useAppStore } from '@/store/app-store';
+import * as React from "react";
+import ConnectionsSidebar from "./connections-sidebar";
+import ObjectBrowser from "./object-browser";
+import TransferQueue from "./transfer-queue";
+import { isTauri, listConnections } from "@/lib/tauri";
+import { useAppStore } from "@/store/app-store";
 
-const SIDEBAR_KEY = 'bucketdock.sidebarWidth';
+const SIDEBAR_KEY = "bucketdock.sidebarWidth";
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 520;
 const SIDEBAR_DEFAULT = 260;
@@ -20,7 +21,9 @@ export default function AppShell() {
     if (!isTauri()) return;
     listConnections()
       .then(setConnections)
-      .catch(() => {/* silently ignore */});
+      .catch(() => {
+        /* silently ignore */
+      });
   }, [setConnections]);
 
   // Restore persisted width
@@ -29,9 +32,12 @@ export default function AppShell() {
       const raw = localStorage.getItem(SIDEBAR_KEY);
       if (raw) {
         const n = parseInt(raw, 10);
-        if (Number.isFinite(n)) setSidebarWidth(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n)));
+        if (Number.isFinite(n))
+          setSidebarWidth(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n)));
       }
-    } catch {/* ignore */}
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   // Drag handler
@@ -43,17 +49,21 @@ export default function AppShell() {
     }
     function onUp() {
       setDragging(false);
-      try { localStorage.setItem(SIDEBAR_KEY, String(sidebarWidth)); } catch {/* ignore */}
+      try {
+        localStorage.setItem(SIDEBAR_KEY, String(sidebarWidth));
+      } catch {
+        /* ignore */
+      }
     }
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
     return () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
   }, [dragging, sidebarWidth]);
 
@@ -86,12 +96,19 @@ export default function AppShell() {
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize sidebar"
-          onMouseDown={(e) => { e.preventDefault(); setDragging(true); }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
           onDoubleClick={() => {
             setSidebarWidth(SIDEBAR_DEFAULT);
-            try { localStorage.setItem(SIDEBAR_KEY, String(SIDEBAR_DEFAULT)); } catch {/* ignore */}
+            try {
+              localStorage.setItem(SIDEBAR_KEY, String(SIDEBAR_DEFAULT));
+            } catch {
+              /* ignore */
+            }
           }}
-          className={`relative w-1 shrink-0 cursor-col-resize group ${dragging ? 'bg-blue-500/40' : 'hover:bg-blue-500/20'}`}
+          className={`relative w-1 shrink-0 cursor-col-resize group ${dragging ? "bg-blue-500/40" : "hover:bg-blue-500/20"}`}
           title="Drag to resize · double-click to reset"
         >
           {/* Wider invisible hit area */}
@@ -103,6 +120,7 @@ export default function AppShell() {
           <ObjectBrowser />
         </main>
       </div>
+      <TransferQueue />
     </div>
   );
 }

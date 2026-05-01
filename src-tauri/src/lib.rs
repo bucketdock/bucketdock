@@ -1,6 +1,7 @@
 mod connections;
 mod commands_conns;
 mod commands_s3;
+mod commands_transfers;
 mod error;
 mod s3;
 mod state;
@@ -44,6 +45,10 @@ pub fn run() {
       commands_s3::upload_folder,
       commands_s3::download_folder,
       commands_s3::delete_prefix,
+      commands_transfers::upload_file_tracked,
+      commands_transfers::download_file_tracked,
+      commands_transfers::copy_object_tracked,
+      commands_transfers::cancel_transfer,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

@@ -280,6 +280,24 @@ impl S3Client {
         Ok(())
     }
 
+    /// Open a streaming reader over an object body. Used by the transfer
+    /// queue so it can write to disk incrementally and emit progress.
+    pub async fn get_object_stream(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<aws_sdk_s3::primitives::ByteStream> {
+        let resp = self
+            .client
+            .get_object()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(fmt_sdk_err)?;
+        Ok(resp.body)
+    }
+
     // -----------------------------------------------------------------------
     // Delete operations
     // -----------------------------------------------------------------------

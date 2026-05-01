@@ -1,8 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from "@tauri-apps/api/core";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type Provider = 'aws' | 'r2' | 'custom';
+export type Provider = "aws" | "r2" | "custom";
 
 export interface Connection {
   id: string;
@@ -44,20 +44,24 @@ export interface ListPage {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 export function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+async function call<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
   try {
     return await invoke<T>(cmd, args);
   } catch (err) {
     // Tauri commands serialize Rust errors as { kind, message }.
     // Unwrap to a real Error so toasts/UI show a useful string.
-    if (err && typeof err === 'object') {
+    if (err && typeof err === "object") {
       const obj = err as { message?: unknown; kind?: unknown };
-      if (typeof obj.message === 'string' && obj.message.length > 0) {
+      if (typeof obj.message === "string" && obj.message.length > 0) {
         const e = new Error(obj.message);
-        if (typeof obj.kind === 'string') (e as Error & { kind?: string }).kind = obj.kind;
+        if (typeof obj.kind === "string")
+          (e as Error & { kind?: string }).kind = obj.kind;
         throw e;
       }
     }
@@ -68,29 +72,32 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 // ── Connection commands ───────────────────────────────────────────────────────
 
 export function listConnections(): Promise<Connection[]> {
-  return call('list_connections');
+  return call("list_connections");
 }
 
 export function addConnection(input: ConnectionInput): Promise<Connection> {
-  return call('add_connection', { input });
+  return call("add_connection", { input });
 }
 
-export function updateConnection(id: string, input: ConnectionInput): Promise<Connection> {
-  return call('update_connection', { id, input });
+export function updateConnection(
+  id: string,
+  input: ConnectionInput,
+): Promise<Connection> {
+  return call("update_connection", { id, input });
 }
 
 export function deleteConnection(id: string): Promise<void> {
-  return call('delete_connection', { id });
+  return call("delete_connection", { id });
 }
 
 export function testConnection(input: ConnectionInput): Promise<number> {
-  return call('test_connection', { input });
+  return call("test_connection", { input });
 }
 
 // ── Bucket commands ───────────────────────────────────────────────────────────
 
 export function listBuckets(connectionId: string): Promise<BucketInfo[]> {
-  return call('list_buckets', { connectionId });
+  return call("list_buckets", { connectionId });
 }
 
 // ── Object commands ───────────────────────────────────────────────────────────
@@ -101,7 +108,12 @@ export function listObjects(
   prefix: string,
   continuationToken?: string | null,
 ): Promise<ListPage> {
-  return call('list_objects', { connectionId, bucket, prefix, continuationToken: continuationToken ?? null });
+  return call("list_objects", {
+    connectionId,
+    bucket,
+    prefix,
+    continuationToken: continuationToken ?? null,
+  });
 }
 
 export function uploadFile(
@@ -110,7 +122,7 @@ export function uploadFile(
   key: string,
   localPath: string,
 ): Promise<void> {
-  return call('upload_file', { connectionId, bucket, key, localPath });
+  return call("upload_file", { connectionId, bucket, key, localPath });
 }
 
 export function downloadFile(
@@ -119,19 +131,31 @@ export function downloadFile(
   key: string,
   localPath: string,
 ): Promise<void> {
-  return call('download_file', { connectionId, bucket, key, localPath });
+  return call("download_file", { connectionId, bucket, key, localPath });
 }
 
-export function deleteObject(connectionId: string, bucket: string, key: string): Promise<void> {
-  return call('delete_object', { connectionId, bucket, key });
+export function deleteObject(
+  connectionId: string,
+  bucket: string,
+  key: string,
+): Promise<void> {
+  return call("delete_object", { connectionId, bucket, key });
 }
 
-export function deleteObjects(connectionId: string, bucket: string, keys: string[]): Promise<void> {
-  return call('delete_objects', { connectionId, bucket, keys });
+export function deleteObjects(
+  connectionId: string,
+  bucket: string,
+  keys: string[],
+): Promise<void> {
+  return call("delete_objects", { connectionId, bucket, keys });
 }
 
-export function createFolder(connectionId: string, bucket: string, prefix: string): Promise<void> {
-  return call('create_folder', { connectionId, bucket, prefix });
+export function createFolder(
+  connectionId: string,
+  bucket: string,
+  prefix: string,
+): Promise<void> {
+  return call("create_folder", { connectionId, bucket, prefix });
 }
 
 export function renameObject(
@@ -140,7 +164,7 @@ export function renameObject(
   oldKey: string,
   newKey: string,
 ): Promise<void> {
-  return call('rename_object', { connectionId, bucket, oldKey, newKey });
+  return call("rename_object", { connectionId, bucket, oldKey, newKey });
 }
 
 export function getPresignedUrl(
@@ -149,12 +173,37 @@ export function getPresignedUrl(
   key: string,
   expiresInSecs?: number,
 ): Promise<string> {
-  return call('get_presigned_url', { connectionId, bucket, key, expiresInSecs: expiresInSecs ?? 3600 });
+  return call("get_presigned_url", {
+    connectionId,
+    bucket,
+    key,
+    expiresInSecs: expiresInSecs ?? 3600,
+  });
 }
 
-export function uploadFolder(connectionId: string, bucket: string, prefix: string, localDir: string): Promise<[number, number]> { return call('upload_folder', { connectionId, bucket, prefix, localDir }); }
-export function downloadFolder(connectionId: string, bucket: string, prefix: string, localDir: string): Promise<[number, number]> { return call('download_folder', { connectionId, bucket, prefix, localDir }); }
-export function deletePrefix(connectionId: string, bucket: string, prefix: string): Promise<number> { return call('delete_prefix', { connectionId, bucket, prefix }); }
+export function uploadFolder(
+  connectionId: string,
+  bucket: string,
+  prefix: string,
+  localDir: string,
+): Promise<[number, number]> {
+  return call("upload_folder", { connectionId, bucket, prefix, localDir });
+}
+export function downloadFolder(
+  connectionId: string,
+  bucket: string,
+  prefix: string,
+  localDir: string,
+): Promise<[number, number]> {
+  return call("download_folder", { connectionId, bucket, prefix, localDir });
+}
+export function deletePrefix(
+  connectionId: string,
+  bucket: string,
+  prefix: string,
+): Promise<number> {
+  return call("delete_prefix", { connectionId, bucket, prefix });
+}
 
 export interface ObjectMetadata {
   content_type: string | null;
@@ -168,10 +217,94 @@ export interface ObjectMetadata {
   etag: string | null;
 }
 
-export function getObjectMetadata(connectionId: string, bucket: string, key: string): Promise<ObjectMetadata> {
-  return call('get_object_metadata', { connectionId, bucket, key });
+export function getObjectMetadata(
+  connectionId: string,
+  bucket: string,
+  key: string,
+): Promise<ObjectMetadata> {
+  return call("get_object_metadata", { connectionId, bucket, key });
 }
 
-export function updateObjectMetadata(connectionId: string, bucket: string, key: string, metadata: ObjectMetadata): Promise<void> {
-  return call('update_object_metadata', { connectionId, bucket, key, metadata });
+export function updateObjectMetadata(
+  connectionId: string,
+  bucket: string,
+  key: string,
+  metadata: ObjectMetadata,
+): Promise<void> {
+  return call("update_object_metadata", {
+    connectionId,
+    bucket,
+    key,
+    metadata,
+  });
+}
+
+// ── Tracked transfer commands ────────────────────────────────────────────────
+//
+// These mirror the simple upload/download/copy commands but accept a
+// `transferId` so the backend can emit `transfer://progress` events and the
+// transfer can be cancelled via `cancelTransfer(transferId)`.
+
+export function uploadFileTracked(
+  connectionId: string,
+  bucket: string,
+  key: string,
+  localPath: string,
+  transferId: string,
+): Promise<void> {
+  return call("upload_file_tracked", {
+    connectionId,
+    bucket,
+    key,
+    localPath,
+    transferId,
+  });
+}
+
+export function downloadFileTracked(
+  connectionId: string,
+  bucket: string,
+  key: string,
+  localPath: string,
+  transferId: string,
+): Promise<void> {
+  return call("download_file_tracked", {
+    connectionId,
+    bucket,
+    key,
+    localPath,
+    transferId,
+  });
+}
+
+export function copyObjectTracked(
+  srcConnectionId: string,
+  srcBucket: string,
+  srcKey: string,
+  dstConnectionId: string,
+  dstBucket: string,
+  dstKey: string,
+  transferId: string,
+): Promise<void> {
+  return call("copy_object_tracked", {
+    srcConnectionId,
+    srcBucket,
+    srcKey,
+    dstConnectionId,
+    dstBucket,
+    dstKey,
+    transferId,
+  });
+}
+
+export function cancelTransfer(transferId: string): Promise<void> {
+  return call("cancel_transfer", { transferId });
+}
+
+export interface TransferProgressEvent {
+  id: string;
+  status: "running" | "done" | "failed" | "cancelled";
+  loaded: number;
+  total: number;
+  error: string | null;
 }

@@ -1,22 +1,14 @@
-<table style="border: none;">
-  <tr style="border: none;">
-    <td width="88" style="border: none;">
-      <img src="src-tauri/icons/128x128.png" alt="BucketDock icon" width="72" height="72" />
-    </td>
-    <td style="border: none;">
-      <h1>BucketDock</h1>
-      <p>Native macOS desktop browser for S3-compatible object storage.</p>
-    </td>
-  </tr>
-</table>
+# <img src="src-tauri/icons/32x32.png" alt="BucketDock icon" width="32" height="32" /> BucketDock
+
+**Native macOS desktop browser for S3-compatible object storage.**
+
+BucketDock is built for AWS S3, Cloudflare R2, and other S3-compatible providers when you want a desktop UI instead of the CLI or a browser dashboard.
 
 It combines:
 
 - a Next.js 16 + React 19 frontend
 - a Tauri 2 desktop shell
 - a Rust backend that performs all storage operations
-
-BucketDock is built for AWS S3, Cloudflare R2, and other S3-compatible providers when you want a desktop UI instead of the CLI or a browser dashboard.
 
 ## Implemented Features
 
@@ -51,6 +43,16 @@ BucketDock is built for AWS S3, Cloudflare R2, and other S3-compatible providers
 - Delete multiple selected objects
 - Delete prefixes recursively
 - Open a file through a presigned URL
+- Copy files between buckets, including across different connections and providers
+
+### Transfer Queue
+
+- Background queue for uploads, downloads, and bucket-to-bucket copies
+- Per-transfer status (running, done, failed, cancelled)
+- Live progress bar for downloads and copies (uploads show start / complete)
+- Cancel a running transfer
+- Retry a failed transfer
+- Dock at the bottom-right with collapse and clear-finished actions
 
 ### Metadata
 
@@ -78,10 +80,10 @@ The following items are not implemented in the current codebase and should not b
 - object tags
 - search and filter UI
 - user-selectable sort controls
-- transfer queue or per-transfer progress UI
-- folder rename or move
+- folder rename, move, or bucket-to-bucket folder copy
 - Finder reveal or open-downloaded-file action
 - bucket policy inspection
+- per-part upload progress (uploads currently report only start and complete)
 
 ## Keyboard Shortcuts
 
@@ -145,6 +147,7 @@ bucketdock/
 │   ├── src/
 │   │   ├── commands_conns.rs   # Connection management commands
 │   │   ├── commands_s3.rs      # Bucket and object commands
+│   │   ├── commands_transfers.rs # Tracked transfer commands (queue + cancel)
 │   │   ├── connections.rs      # Metadata persistence and Keychain helpers
 │   │   ├── s3.rs               # AWS SDK client setup and S3 operations
 │   │   ├── state.rs            # Shared Tauri app state

@@ -41,9 +41,13 @@ For Next.js-specific behavior, APIs, config, and conventions:
 - `src/components/connection-form-modal.tsx`: add/edit/test connection UI
 - `src/components/connections-sidebar.tsx`: saved connection list and bucket loading
 - `src/components/object-browser.tsx`: main browser UI and object actions
+- `src/components/transfer-queue.tsx`: bottom-right transfer dock (progress, cancel, retry)
+- `src/components/copy-to-modal.tsx`: bucket-to-bucket copy destination picker
+- `src/store/transfers-store.ts`: transfer queue state, dispatches tracked Tauri commands
 - `src/lib/tauri.ts`: frontend Tauri command bridge
 - `src-tauri/src/commands_conns.rs`: add/update/delete/test connection commands
 - `src-tauri/src/commands_s3.rs`: bucket and object command handlers
+- `src-tauri/src/commands_transfers.rs`: tracked upload/download/copy + cancel
 - `src-tauri/src/connections.rs`: metadata persistence and keychain helpers
 - `src-tauri/src/s3.rs`: AWS SDK client configuration and storage operations
 
@@ -55,7 +59,9 @@ For Next.js-specific behavior, APIs, config, and conventions:
 
 ## Guardrails
 
-- Do not claim unsupported features are implemented. Search, tags, transfer queue, and folder rename are not shipped.
+- Do not claim unsupported features are implemented. Search, tags, and folder rename are not shipped.
+- Folder copy across buckets is not implemented; only single-file copy through `copy_object_tracked`.
+- Upload progress is currently start/complete only — do not claim per-byte upload progress.
 - If a saved connection behaves differently from a form test, inspect keychain persistence before changing S3 logic.
 - Prefer small, local changes around the owning abstraction instead of broad rewrites.
 <!-- END:nextjs-agent-rules -->
