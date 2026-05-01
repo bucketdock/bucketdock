@@ -125,6 +125,12 @@ impl S3Client {
         use aws_credential_types::Credentials;
         use aws_sdk_s3::config::Region;
 
+        if conn.access_key_id.trim().is_empty() || conn.secret_access_key.trim().is_empty() {
+            return Err(Error::Keyring(
+                "missing stored secret for this connection; open Edit Connection, enter the Secret Access Key, and save it again".into(),
+            ));
+        }
+
         let region = if conn.provider == "r2" {
             "auto".to_string()
         } else {
@@ -150,10 +156,11 @@ impl S3Client {
         let sdk_config = loader.load().await;
 
         let s3_config = aws_sdk_s3::config::Builder::from(&sdk_config)
-            // Cloudflare R2 expects virtual-hosted style signing against the
-            // account endpoint. Keep path-style only for generic custom S3
-            // endpoints where that is commonly required.
-            .force_path_style(conn.provider == "custom")
+            // R2 connections are configured with the account endpoint
+            // (https://<account>.r2.cloudflarestorage.com). Keep bucket names
+            // in the request path so scoped tokens and account-endpoint signing
+            // stay aligned.
+            .force_path_style(conn.provider == "custom" || conn.provider == "r2")
             .build();
 
         Ok(S3Client {

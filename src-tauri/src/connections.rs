@@ -91,12 +91,12 @@ pub fn delete_secret(id: &str) -> Result<()> {
     }
 }
 
-pub fn merge_secrets(metas: Vec<Connection>) -> Vec<Connection> {
+pub fn merge_secrets(metas: Vec<Connection>) -> Result<Vec<Connection>> {
     metas
         .into_iter()
         .map(|mut conn| {
-            conn.secret_access_key = load_secret(&conn.id).unwrap_or_default();
-            conn
+            conn.secret_access_key = load_secret(&conn.id)?;
+            Ok(conn)
         })
         .collect()
 }

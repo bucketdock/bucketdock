@@ -15,7 +15,7 @@ impl AppState {
     pub fn new() -> Result<Self> {
         let data_dir = connections::data_dir();
         let metas = connections::load_metadata()?;
-        let with_secrets = connections::merge_secrets(metas);
+        let with_secrets = connections::merge_secrets(metas)?;
         let map = with_secrets.into_iter().map(|c| (c.id.clone(), c)).collect();
         Ok(Self {
             connections: Mutex::new(map),
@@ -25,7 +25,7 @@ impl AppState {
 
     pub async fn reload(&self) -> Result<()> {
         let metas = connections::load_metadata()?;
-        let with_secrets = connections::merge_secrets(metas);
+        let with_secrets = connections::merge_secrets(metas)?;
         let map: HashMap<String, Connection> =
             with_secrets.into_iter().map(|c| (c.id.clone(), c)).collect();
         let mut guard = self.connections.lock().await;

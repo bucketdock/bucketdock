@@ -1,495 +1,340 @@
-# BucketDock
+<table style="border: none;">
+  <tr style="border: none;">
+    <td width="88" style="border: none;">
+      <img src="src-tauri/icons/128x128.png" alt="BucketDock icon" width="72" height="72" />
+    </td>
+    <td style="border: none;">
+      <h1>BucketDock</h1>
+      <p>Native macOS desktop browser for S3-compatible object storage.</p>
+    </td>
+  </tr>
+</table>
 
-**BucketDock** is a native macOS desktop file manager for AWS S3, Cloudflare R2, and S3-compatible object storage.
-It is built with **Tauri**, **Rust**, **Next.js**, and **TypeScript**.
-BucketDock gives you a desktop-style interface for browsing buckets, uploading files, downloading objects, deleting files, and managing object metadata without using the AWS CLI or a browser dashboard.
+It combines:
 
-## Features
+- a Next.js 16 + React 19 frontend
+- a Tauri 2 desktop shell
+- a Rust backend that performs all storage operations
 
-### Storage providers
+BucketDock is built for AWS S3, Cloudflare R2, and other S3-compatible providers when you want a desktop UI instead of the CLI or a browser dashboard.
 
-- AWS S3
-- Cloudflare R2
-- Custom S3-compatible providers
-- MinIO-compatible endpoints
-- Other S3-compatible object storage services
+## Implemented Features
 
-### Bucket browser
+### Connections
 
-- Browse objects and folder-like prefixes
-- Navigate prefixes like folders
-- View object size, last modified date, ETag, content type, and storage class
-- Refresh bucket contents
-- Search and filter objects
-- Sort objects by name, size, type, and last modified date
+- Multiple saved connections
+- Providers: AWS S3, Cloudflare R2, generic S3-compatible endpoints
+- Connection testing from the UI
+- Optional fixed bucket list for scoped credentials
+- Edit and delete connection profiles
 
-### File operations
+### Bucket And Object Browsing
+
+- Bucket sidebar per connection
+- Folder-like navigation over object prefixes
+- Breadcrumb navigation
+- Multi-select in the current listing
+- Context menus for common actions
+- Empty states and loading skeletons
+
+### Object Operations
 
 - Upload files
 - Upload folders recursively
-- Download files
+- Drag-and-drop file upload into the current prefix
+- Download a file
+- Download multiple selected items
 - Download folders recursively
-- Delete objects
-- Delete prefixes/folders recursively
-- Rename or move objects using copy + delete
-- Create folder placeholders
-- Copy object keys
+- Create folder placeholder objects
+- Rename objects
+- Delete single objects
+- Delete multiple selected objects
+- Delete prefixes recursively
+- Open a file through a presigned URL
 
-### Metadata and tags
+### Metadata
 
-- View object metadata
-- View object tags
-- Edit content type
-- Edit cache-control
-- Edit custom metadata
-- Edit object tags
+- View object size, modified time, ETag, and key
+- Edit Content-Type
+- Edit Cache-Control
+- Edit Content-Disposition
+- Edit Content-Encoding
+- Edit Content-Language
+- Edit custom user metadata
 
-### Desktop experience
+### Desktop Behavior
 
-- Native macOS desktop app
-- Native file picker
-- Native folder picker
-- Drag-and-drop upload support
-- Transfer queue
-- Upload/download progress
-- Open downloaded files in Finder
-- Dark mode
-- Keyboard shortcuts
+- Native macOS window via Tauri
+- Native file and directory pickers
+- macOS Keychain secret storage
+- Light and dark appearance support
+- Persistent sidebar width
+- Persistent selected connection, bucket, and prefix state
+
+## Not Implemented Yet
+
+The following items are not implemented in the current codebase and should not be treated as shipped features:
+
+- object tags
+- search and filter UI
+- user-selectable sort controls
+- transfer queue or per-transfer progress UI
+- folder rename or move
+- Finder reveal or open-downloaded-file action
+- bucket policy inspection
+
+## Keyboard Shortcuts
+
+Current object browser shortcuts:
+
+- `Delete` or `Backspace` with a selection: delete selected items
+- `Enter` with one selected folder: open that folder
+- `Cmd+A` or `Ctrl+A`: select all visible items
+- `Cmd+I` or `Ctrl+I`: open info for one selected file
+
+## Architecture
+
+BucketDock uses a split desktop architecture:
+
+```text
+Next.js frontend
+  -> Tauri command bridge
+    -> Rust backend
+      -> AWS SDK for S3 / R2 / compatible providers
+```
+
+The frontend never talks directly to S3.
+
+All storage requests are executed by the Rust backend through Tauri commands. That keeps request signing logic and secrets out of the browser runtime.
+
+## Local Data And Secrets
+
+Connection metadata is stored in:
+
+```text
+~/Library/Application Support/BucketDock/connections.json
+```
+
+Stored there:
+
+- connection name
+- provider
+- endpoint
+- region
+- access key id
+- optional bucket list
+
+Secret access keys are stored separately in the macOS Keychain under the service name:
+
+```text
+com.bucketdock.app
+```
+
+If a connection was created before native Keychain persistence was enabled, edit that connection, enter the Secret Access Key again, and save it once so the secret is written into the macOS Keychain.
+
+## Repository Layout
+
+```text
+bucketdock/
+├── src/
+│   ├── app/                    # Next.js app router entrypoints and global styles
+│   ├── components/             # Desktop UI, browser, forms, modals, primitives
+│   ├── lib/                    # Tauri bridge helpers and shared utilities
+│   └── store/                  # Zustand app state
+├── src-tauri/
+│   ├── src/
+│   │   ├── commands_conns.rs   # Connection management commands
+│   │   ├── commands_s3.rs      # Bucket and object commands
+│   │   ├── connections.rs      # Metadata persistence and Keychain helpers
+│   │   ├── s3.rs               # AWS SDK client setup and S3 operations
+│   │   ├── state.rs            # Shared Tauri app state
+│   │   └── lib.rs              # Tauri bootstrap and command registration
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+├── next.config.ts
+├── package.json
+└── README.md
+```
 
 ## Tech Stack
 
 ### Frontend
 
-- [Next.js](https://nextjs.org/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [shadcn/ui](https://ui.shadcn.com/)
-- [TanStack Table](https://tanstack.com/table)
-- [Zustand](https://zustand-demo.pmnd.rs/)
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- Zustand
+- Sonner
+- Lucide React
 
 ### Desktop Shell
 
-- [Tauri v2](https://tauri.app/)
+- Tauri 2
+- tauri-plugin-dialog
+- tauri-plugin-opener
+- tauri-plugin-log
 
 ### Backend
 
 - Rust
-- `aws-sdk-s3`
-- `tokio`
-- `serde`
-- `keyring`
+- aws-config
+- aws-sdk-s3
+- tokio
+- keyring
+- chrono
+- walkdir
 
-## Architecture
-
-BucketDock uses a split architecture:
-
-```text
-BucketDock
-├── Next.js frontend
-│   ├── UI
-│   ├── object browser
-│   ├── profile editor
-│   ├── transfer queue
-│   └── metadata panel
-│
-└── Rust backend
-    ├── S3/R2 API calls
-    ├── local filesystem access
-    ├── credential storage
-    ├── profile management
-    └── Tauri commands
-```
-
-The frontend does not communicate directly with AWS S3, Cloudflare R2, or any S3-compatible endpoint.
-
-All storage operations are handled by Rust through Tauri commands.
-
-This keeps credentials out of frontend code and avoids exposing secrets to browser APIs.
-
-## Security Model
-
-BucketDock is designed so that:
-
-- S3 credentials are not stored in frontend code
-- secrets are not stored in localStorage
-- secrets are not stored in plain-text config files
-- access keys are stored securely using the operating system keychain
-- profile config stores only non-secret metadata
-- credentials are never logged
-- S3 operations are performed only from the Rust backend
-
-## Project Structure
-
-```text
-bucketdock/
-├── src-tauri/
-│ ├── src/
-│ │ ├── main.rs
-│ │ ├── commands/
-│ │ ├── config/
-│ │ ├── credentials/
-│ │ ├── errors/
-│ │ ├── models/
-│ │ ├── storage/
-│ │ └── transfers/
-│ ├── Cargo.toml
-│ └── tauri.conf.json
-│
-├── src/
-│ ├── app/
-│ ├── components/
-│ │ ├── browser/
-│ │ ├── metadata/
-│ │ ├── profile/
-│ │ └── transfers/
-│ ├── lib/
-│ ├── store/
-│ └── types/
-│
-├── public/
-├── package.json
-├── next.config.ts
-├── tailwind.config.ts
-└── README.md
-```
-
-## Getting Started
+## Development
 
 ### Prerequisites
 
-Install:
-
+- macOS
 - Node.js
-- npm, pnpm, or yarn
+- pnpm
 - Rust
 - Tauri prerequisites for macOS
 
-For Tauri setup instructions, see:
+Tauri setup instructions:
 
 https://tauri.app/start/prerequisites/
 
 ### Install Dependencies
 
-Using npm:
-
-```bash
-npm install
-```
-
-Using pnpm:
-
 ```bash
 pnpm install
 ```
 
-### Run in Development
-
-```bash
-npm run tauri dev
-```
-
-or:
+### Run The Desktop App
 
 ```bash
 pnpm tauri dev
 ```
 
-### Build the macOS App
+This starts the Next.js frontend on port `1420` and launches the Tauri shell.
+
+### Run Only The Frontend
 
 ```bash
-npm run tauri build
+pnpm dev --port 1420
 ```
 
-or:
+This is useful for UI work, but storage operations require the Tauri shell and Rust backend.
+
+### Build
 
 ```bash
 pnpm tauri build
 ```
 
-The built app will be created inside:
+The Next.js frontend is exported to `out/`, and Tauri bundles the macOS app from there.
+
+Build artifacts are written under:
 
 ```text
 src-tauri/target/release/bundle/
 ```
 
-## Next.js Static Export
+### Useful Backend Check
 
-BucketDock is intended to run as a static frontend inside Tauri.
-
-The Next.js config should use static export:
-
-```typescript
-const nextConfig = {
-  output: "export",
-  images: {
-    unoptimized: true,
-  },
-};
-export default nextConfig;
+```bash
+cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-## Cloudflare R2 Setup
+## Provider Setup
 
-Cloudflare R2 is S3-compatible, but it uses slightly different configuration from AWS S3.
+### AWS S3
 
-### Standard R2 endpoint
-
-Use:
+Typical AWS S3 setup:
 
 ```text
+Provider: AWS S3
+Region: eu-central-1
+Endpoint: leave empty
+Buckets: leave empty to auto-list, or set one or more names
+```
+
+### Cloudflare R2
+
+Use the account endpoint and keep the bucket name separate.
+
+Standard R2 setup:
+
+```text
+Provider: Cloudflare R2
 Endpoint: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
 Region: auto
-Bucket: your-bucket-name
-Path-style addressing: true
+Buckets: your-bucket-name
 ```
 
-Example:
+If you have access to more than one bucket, the `Buckets` field can contain a comma-, space-, newline-, or semicolon-separated list.
 
-```text
-Endpoint: https://9cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.cloudflarestorage.com
-Region: auto
-Bucket: attributionhub
-Path-style addressing: true
-```
+Important rules:
 
-Do not include the bucket name in the endpoint.
+- Do not append the bucket name to the endpoint URL
+- Keep region set to `auto`
+- For bucket-scoped credentials, enter the exact bucket name in the `Buckets` field
+- For jurisdiction-specific R2 endpoints, paste the full endpoint manually
 
 Correct:
 
 ```text
-Endpoint: https://9cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.cloudflarestorage.com
-Bucket: attributionhub
+Endpoint: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+Buckets: media-assets
+Region: auto
 ```
 
 Incorrect:
 
 ```text
-Endpoint: https://9cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.cloudflarestorage.com/attributionhub
-Bucket: attributionhub
+Endpoint: https://<ACCOUNT_ID>.r2.cloudflarestorage.com/media-assets
+Buckets: media-assets
+Region: auto
 ```
 
-### EU / jurisdiction-specific R2 endpoint
-
-For jurisdiction-specific buckets, use the jurisdiction in the endpoint.
+### Generic S3-Compatible Providers
 
 Example:
 
 ```text
-Endpoint: https://<ACCOUNT_ID>.eu.r2.cloudflarestorage.com
-Region: auto
-Bucket: your-bucket-name
-Path-style addressing: true
-```
-
-Recommended Cloudflare R2 values
-
-```text
-Provider: Cloudflare R2
-Region: auto
-Path-style addressing: true
-```
-
-## AWS S3 Setup
-
-For AWS S3, use the normal AWS region and bucket name.
-
-Example:
-
-```text
-Provider: AWS S3
-Region: eu-central-1
-Bucket: my-bucket
-Endpoint: empty
-Path-style addressing: false
-```
-
-For AWS S3-compatible custom endpoints, provide the endpoint URL manually.
-
-## Custom S3-Compatible Setup
-
-Example for a custom S3-compatible provider:
-
-```text
-Provider: Custom S3
+Provider: S3-Compatible
 Endpoint: https://s3.example.com
 Region: us-east-1
-Bucket: my-bucket
-Path-style addressing: true
+Buckets: my-bucket
 ```
 
-Some providers require path-style addressing. Others support virtual-hosted-style addressing.
-
-If connection testing works but listing objects fails, check:
-
-- endpoint URL
-- region
-- bucket name
-- path-style addressing
-- access key permissions
-- secret key
-- whether the bucket name was accidentally added to the endpoint
-
-## Common Cloudflare R2 Error
+## Troubleshooting Cloudflare R2
 
 ### SignatureDoesNotMatch
 
-If you see:
+If opening a bucket fails with an error like:
 
 ```text
-SignatureDoesNotMatch
-The request signature we calculated does not match the signature you provided.
+Failed to list objects: S3 error: service error: unhandled error (SignatureDoesNotMatch)
 ```
 
-Check that your R2 profile does not include the bucket name inside the endpoint URL.
+check the following first:
 
-Use:
+1. The endpoint must be the account endpoint, not an endpoint with the bucket appended.
+2. The region must be exactly `auto`.
+3. The bucket name must be entered separately in the `Buckets` field.
+4. If the credentials are scoped to one specific bucket, that bucket must be listed explicitly.
+5. Remove any trailing spaces from endpoint, access key id, bucket name, and secret.
 
-```text
-Endpoint: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
-Bucket: your-bucket-name
-Region: auto
-Path-style addressing: true
-```
+For bucket-scoped R2 credentials, BucketDock skips the account-wide `ListBuckets` call and uses the configured bucket names directly.
 
-Not:
+### Saved Connection Works Only While Editing
 
-```text
-Endpoint: https://<ACCOUNT_ID>.r2.cloudflarestorage.com/your-bucket-name
-```
+If typing the secret into the edit form makes `Test` pass, but testing the saved connection fails, the saved secret is missing. Open `Edit Connection`, enter the Secret Access Key again, and click `Save` so BucketDock can write it into the macOS Keychain.
 
-Also make sure:
+## Notes On Current Behavior
 
-- region is auto
-- endpoint starts with https://
-- there are no trailing spaces
-- bucket name contains only the bucket name
-- test connection and object listing use the same normalized profile config
-
-## Planned Tauri Commands
-
-BucketDock uses Tauri commands to communicate between the frontend and Rust backend.
-
-```text
-list_profiles()
-get_profile(profile_id)
-save_profile(profile)
-delete_profile(profile_id)
-test_profile_connection(profile_id)
-
-list_objects(profile_id, prefix)
-upload_file(profile_id, local_path, destination_key)
-upload_folder(profile_id, local_folder_path, destination_prefix)
-download_file(profile_id, object_key, destination_path)
-download_folder(profile_id, prefix, destination_folder_path)
-
-delete_object(profile_id, object_key)
-delete_objects(profile_id, object_keys)
-count_prefix_objects(profile_id, prefix)
-delete_prefix(profile_id, prefix)
-
-create_folder(profile_id, prefix)
-rename_object(profile_id, source_key, destination_key)
-
-get_object_metadata(profile_id, object_key)
-update_object_metadata(profile_id, object_key, metadata_update)
-
-get_object_tags(profile_id, object_key)
-update_object_tags(profile_id, object_key, tags)
-
-reveal_in_finder(path)
-choose_files()
-choose_folder()
-```
-
-## Keyboard Shortcuts
-
-```text
-Shortcut Action
-Cmd + N New profile
-Cmd + R Refresh
-Cmd + U Upload
-Cmd + D Download
-Delete Delete selected object
-Enter Open folder/prefix
-Backspace Go to parent prefix
-Cmd + F Search/filter
-Cmd + I Show object details
-```
-
-## MVP Scope
-
-The first working version should include:
-
-- profile creation
-- secure credential saving
-- bucket object listing
-- prefix navigation
-- file upload
-- file download
-- object delete with confirmation
-- basic metadata details panel
-- Cloudflare R2 support
-- AWS S3 support
-
-## Roadmap
-
-- Transfer queue
-- Recursive folder upload
-- Recursive folder download
-- Recursive prefix delete
-- Object rename/move
-- Metadata editing
-- Tag editing
-- Drag-and-drop upload
-- Multi-select operations
-- Search and advanced filtering
-- Finder integration
-- Signed URL generation
-- Bucket policy viewer
-- Public/private object indicators
-- Import/export profiles without secrets
-- App signing and notarization for macOS
-
-## Development Notes
-
-S3 key behavior
-
-S3 does not have real folders.
-
-Folders are represented by object key prefixes.
-
-Example:
-
-```text
-photos/2026/image.jpg
-```
-
-The folders photos/ and photos/2026/ are virtual prefixes.
-
-BucketDock treats prefixes as folders in the UI.
-
-## Safety
-
-BucketDock should always ask for confirmation before destructive actions.
-
-Recursive delete must:
-
-1. Count objects first
-2. Show the number of objects to be deleted
-3. Ask for explicit confirmation
-4. Never delete silently
+- Folder rename is not supported yet.
+- Object rename is implemented as copy plus delete.
+- Recursive folder delete removes all objects under the selected prefix.
+- Metadata editing uses a copy-with-replace flow through S3-compatible APIs.
+- The frontend is exported statically and loaded by Tauri from `out/`.
 
 ## License
 
-This project is not yet licensed.
-
-## Name
-
-BucketDock means:
-
-- Bucket: object storage bucket
-- Dock: native desktop/macOS feeling
-
-Tagline:
-
-BucketDock — your S3 buckets, on your desktop.
+This repository does not currently declare a license.
