@@ -337,4 +337,8 @@ If typing the secret into the edit form makes `Test` pass, but testing the saved
 
 ## License
 
-This repository does not currently declare a license.
+BucketDock source code is licensed under the Apache License, Version 2.0.
+
+See [LICENSE](./LICENSE) for details.
+
+The BucketDock name, logo, icon, domain, and official release assets are not licensed for use in a way that suggests endorsement by the official project.
