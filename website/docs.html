@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Docs · BucketDock</title>
+    <meta
+      name="description"
+      content="Connect AWS S3, Cloudflare R2 or any S3-compatible endpoint to BucketDock — and learn the keyboard shortcuts and transfer queue."
+    />
+    <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="assets/favicon-32.png"
+    />
+    <link rel="apple-touch-icon" href="assets/icon-512.png" />
+    <link rel="canonical" href="https://bucketdock.com/docs.html" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="/">
+          <img
+            src="assets/logo.svg"
+            alt="BucketDock logo"
+            width="28"
+            height="28"
+          />
+          BucketDock
+        </a>
+        <nav class="nav-links">
+          <a href="index.html#features">Features</a>
+          <a href="docs.html">Docs</a>
+          <a href="download.html">Download</a>
+          <a
+            href="https://github.com/bucketdock/bucketdock"
+            target="_blank"
+            rel="noopener"
+            >GitHub</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <div class="container prose">
+          <h1>Docs</h1>
+          <p>
+            BucketDock is a desktop app, so all storage operations run inside
+            the app itself. There is no service or login. You add a connection,
+            the app talks to S3 from your Mac, and access keys are stored in the
+            macOS Keychain.
+          </p>
+
+          <h2 id="install">Install</h2>
+          <p>
+            Download the latest <code>.dmg</code> from the
+            <a href="download.html">downloads page</a>, drag
+            <code>BucketDock.app</code> into <code>Applications</code>, and
+            launch it.
+          </p>
+
+          <h2 id="add-connection">Add a connection</h2>
+          <p>
+            Click the <strong>+</strong> button in the sidebar and fill in the
+            form.
+          </p>
+
+          <h3>AWS S3</h3>
+          <pre><code>Provider: AWS S3
+Region:   eu-central-1
+Endpoint: (leave empty)
+Buckets:  (leave empty to auto-list, or list specific names)</code></pre>
+
+          <h3>Cloudflare R2</h3>
+          <pre><code>Provider: Cloudflare R2
+Endpoint: https://&lt;ACCOUNT_ID&gt;.r2.cloudflarestorage.com
+Region:   auto
+Buckets:  your-bucket-name</code></pre>
+          <p>
+            Use the <strong>account endpoint</strong>, not a bucket-appended
+            URL. For bucket-scoped credentials, list the bucket names in the
+            <code>Buckets</code> field — comma, space, newline or semicolon
+            separated.
+          </p>
+
+          <h3>S3-compatible (MinIO, Backblaze B2, etc.)</h3>
+          <pre><code>Provider: Custom (S3-compatible)
+Endpoint: https://your-endpoint.example.com
+Region:   us-east-1
+Buckets:  optional list</code></pre>
+
+          <h2 id="transfers">Transfer queue</h2>
+          <p>
+            Every upload, download and bucket-to-bucket copy is tracked in the
+            dock at the bottom-right of the window. Each row shows progress for
+            downloads and copies, and a status indicator for uploads. You can:
+          </p>
+          <ul>
+            <li><strong>Cancel</strong> a running transfer</li>
+            <li><strong>Retry</strong> a failed transfer in place</li>
+            <li>
+              <strong>Clear finished</strong> entries to keep the dock tidy
+            </li>
+          </ul>
+
+          <h2 id="copy">Copy between buckets</h2>
+          <p>
+            Right-click one or more files and choose <strong>Copy to…</strong>.
+            Pick a destination connection (it can be a different provider), a
+            bucket and an optional prefix. Each file becomes a tracked copy
+            transfer that streams through the desktop and reports progress as it
+            goes.
+          </p>
+          <p><em>Folder copy is not yet supported — pick files instead.</em></p>
+
+          <h2 id="shortcuts">Keyboard shortcuts</h2>
+          <ul>
+            <li>
+              <code>Delete</code> / <code>Backspace</code> — delete the current
+              selection
+            </li>
+            <li><code>Enter</code> on a single folder — open the folder</li>
+            <li><code>⌘A</code> — select all visible items</li>
+            <li>
+              <code>⌘I</code> — open <em>Get Info</em> for the selected file
+            </li>
+          </ul>
+
+          <h2 id="storage">Where data lives</h2>
+          <p>Connection metadata is stored at:</p>
+          <pre><code>~/Library/Application Support/BucketDock/connections.json</code></pre>
+          <p>
+            Secret access keys are stored separately in the macOS Keychain under
+            the service name <code>com.bucketdock.app</code>. If a connection
+            was created before native Keychain persistence was enabled, edit the
+            connection, paste the secret key again, and save it once.
+          </p>
+
+          <h2 id="build-from-source">Build from source</h2>
+          <pre><code>git clone https://github.com/bucketdock/bucketdock.git
+cd bucketdock
+pnpm install
+pnpm tauri build</code></pre>
+          <p>
+            Build artifacts are written under
+            <code>src-tauri/target/release/bundle/</code>.
+          </p>
+
+          <h2 id="not-yet">Not yet implemented</h2>
+          <ul>
+            <li>Object tags</li>
+            <li>Search and filter UI</li>
+            <li>Folder rename, move, or bucket-to-bucket folder copy</li>
+            <li>
+              Per-part upload progress (uploads currently report only start and
+              complete)
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container footer-inner">
+        <div class="brand">
+          <img
+            src="assets/logo.svg"
+            alt="BucketDock logo"
+            width="22"
+            height="22"
+          />
+          <span>BucketDock</span>
+        </div>
+        <div class="footer-links">
+          <a href="docs.html">Docs</a>
+          <a href="download.html">Download</a>
+          <a
+            href="https://github.com/bucketdock/bucketdock"
+            target="_blank"
+            rel="noopener"
+            >GitHub</a
+          >
+          <a
+            href="https://github.com/bucketdock/bucketdock/blob/main/LICENSE"
+            target="_blank"
+            rel="noopener"
+            >License</a
+          >
+        </div>
+      </div>
+      <div class="container" style="margin-top: 18px; color: var(--text-faint)">
+        © <span id="y"></span> BucketDock. Apache License 2.0.
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

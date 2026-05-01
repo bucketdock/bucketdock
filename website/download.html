@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Download · BucketDock</title>
+    <meta
+      name="description"
+      content="Download the latest BucketDock release for macOS — DMG and .app builds for Apple Silicon and Intel."
+    />
+    <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="assets/favicon-32.png"
+    />
+    <link rel="apple-touch-icon" href="assets/icon-512.png" />
+    <link rel="canonical" href="https://bucketdock.com/download.html" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="/">
+          <img
+            src="assets/logo.svg"
+            alt="BucketDock logo"
+            width="28"
+            height="28"
+          />
+          BucketDock
+        </a>
+        <nav class="nav-links">
+          <a href="index.html#features">Features</a>
+          <a href="docs.html">Docs</a>
+          <a href="download.html">Download</a>
+          <a
+            href="https://github.com/bucketdock/bucketdock"
+            target="_blank"
+            rel="noopener"
+            >GitHub</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" style="padding-bottom: 40px">
+        <div class="container">
+          <span class="hero-eyebrow">macOS · Apple Silicon &amp; Intel</span>
+          <h1>Download <span class="accent">BucketDock</span></h1>
+          <p>
+            Each release is published on GitHub. Pick the build that matches
+            your Mac.
+          </p>
+          <div class="hero-actions">
+            <a
+              class="btn btn-primary"
+              href="https://github.com/bucketdock/bucketdock/releases/latest"
+              target="_blank"
+              rel="noopener"
+              >Latest release on GitHub</a
+            >
+            <a
+              class="btn btn-secondary"
+              href="https://github.com/bucketdock/bucketdock/releases"
+              target="_blank"
+              rel="noopener"
+              >All releases</a
+            >
+          </div>
+        </div>
+      </section>
+
+      <section style="padding-top: 0">
+        <div class="container">
+          <div class="grid">
+            <div class="card">
+              <div class="icon">🍎</div>
+              <h3>macOS · Apple Silicon</h3>
+              <p>For M1, M2, M3 and newer Macs.</p>
+              <p style="margin-top: 12px">
+                <a
+                  class="btn btn-secondary"
+                  style="padding: 8px 14px; font-size: 13px"
+                  href="https://github.com/bucketdock/bucketdock/releases/latest"
+                  target="_blank"
+                  rel="noopener"
+                  >Get .dmg (aarch64)</a
+                >
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">💻</div>
+              <h3>macOS · Intel</h3>
+              <p>For Intel-based Macs.</p>
+              <p style="margin-top: 12px">
+                <a
+                  class="btn btn-secondary"
+                  style="padding: 8px 14px; font-size: 13px"
+                  href="https://github.com/bucketdock/bucketdock/releases/latest"
+                  target="_blank"
+                  rel="noopener"
+                  >Get .dmg (x86_64)</a
+                >
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">📦</div>
+              <h3>From source</h3>
+              <p>
+                Clone the repository and build it locally with
+                <code>pnpm tauri build</code>.
+              </p>
+              <p style="margin-top: 12px">
+                <a
+                  class="btn btn-ghost"
+                  style="padding: 8px 14px; font-size: 13px"
+                  href="docs.html#build-from-source"
+                  >Build instructions →</a
+                >
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container prose">
+          <h2>First-launch note</h2>
+          <p>
+            BucketDock release builds are not yet notarized by Apple. On first
+            launch you may need to open the DMG, drag the app into
+            <code>Applications</code>, then right-click the app and choose
+            <strong>Open</strong> to confirm the launch.
+          </p>
+          <h2>What's new</h2>
+          <p>
+            See the
+            <a
+              href="https://github.com/bucketdock/bucketdock/releases"
+              target="_blank"
+              rel="noopener"
+              >GitHub releases page</a
+            >
+            for the full changelog. Releases are managed with Release Please, so
+            each version page lists the commits that landed.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container footer-inner">
+        <div class="brand">
+          <img
+            src="assets/logo.svg"
+            alt="BucketDock logo"
+            width="22"
+            height="22"
+          />
+          <span>BucketDock</span>
+        </div>
+        <div class="footer-links">
+          <a href="docs.html">Docs</a>
+          <a href="download.html">Download</a>
+          <a
+            href="https://github.com/bucketdock/bucketdock"
+            target="_blank"
+            rel="noopener"
+            >GitHub</a
+          >
+          <a
+            href="https://github.com/bucketdock/bucketdock/blob/main/LICENSE"
+            target="_blank"
+            rel="noopener"
+            >License</a
+          >
+        </div>
+      </div>
+      <div class="container" style="margin-top: 18px; color: var(--text-faint)">
+        © <span id="y"></span> BucketDock. Apache License 2.0.
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

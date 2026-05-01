@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BucketDock — Native macOS browser for S3-compatible storage</title>
+    <meta
+      name="description"
+      content="A fast, native macOS desktop app for AWS S3, Cloudflare R2 and other S3-compatible providers. Browse, upload, download, copy between buckets — without the AWS console."
+    />
+    <meta name="theme-color" content="#0a0a0d" />
+    <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="assets/favicon-32.png"
+    />
+    <link rel="apple-touch-icon" href="assets/icon-512.png" />
+    <link rel="canonical" href="https://bucketdock.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="BucketDock — Native macOS browser for S3-compatible storage"
+    />
+    <meta
+      property="og:description"
+      content="A fast, native macOS desktop app for AWS S3, Cloudflare R2 and other S3-compatible providers."
+    />
+    <meta property="og:url" content="https://bucketdock.com/" />
+    <meta
+      property="og:image"
+      content="https://bucketdock.com/assets/icon-512.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="/">
+          <img
+            src="assets/logo.svg"
+            alt="BucketDock logo"
+            width="28"
+            height="28"
+          />
+          BucketDock
+        </a>
+        <nav class="nav-links">
+          <a href="#features">Features</a>
+          <a href="docs.html">Docs</a>
+          <a href="download.html">Download</a>
+          <a
+            href="https://github.com/bucketdock/bucketdock"
+            target="_blank"
+            rel="noopener"
+            >GitHub</a
+          >
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container">
+          <span class="hero-eyebrow">macOS · Tauri · Open source</span>
+          <h1>
+            S3 storage, finally <span class="accent">native</span> on the
+            desktop.
+          </h1>
+          <p>
+            BucketDock is a fast macOS app for AWS S3, Cloudflare R2 and any
+            S3-compatible endpoint. Browse buckets, transfer files, and copy
+            between providers — without the AWS console or the CLI.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="download.html"
+              >Download for macOS</a
+            >
+            <a
+              class="btn btn-secondary"
+              href="https://github.com/bucketdock/bucketdock"
+              target="_blank"
+              rel="noopener"
+              >View source</a
+            >
+          </div>
+          <div class="hero-meta">
+            Apache 2.0 · Apple Silicon &amp; Intel · Secrets in Keychain
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <div class="panel">
+            <div class="mock">
+              <div class="mock-titlebar">
+                <span class="dot r"></span><span class="dot y"></span
+                ><span class="dot g"></span>
+                <span class="mock-title"
+                  >BucketDock — media-assets / 2026 /</span
+                >
+              </div>
+              <div class="mock-body">
+                <aside class="mock-side">
+                  <div
+                    style="
+                      margin-bottom: 8px;
+                      color: var(--text-faint);
+                      text-transform: uppercase;
+                      font-size: 11px;
+                      letter-spacing: 0.06em;
+                    "
+                  >
+                    Connections
+                  </div>
+                  <div class="item active">☁️ Production AWS</div>
+                  <div class="item">⚡ Cloudflare R2</div>
+                  <div class="item">🖧 MinIO (staging)</div>
+                </aside>
+                <div class="mock-main">
+                  <div class="mock-row">
+                    <span class="name">📁 launches/</span
+                    ><span class="meta">—</span>
+                  </div>
+                  <div class="mock-row">
+                    <span class="name">📁 press-kit/</span
+                    ><span class="meta">—</span>
+                  </div>
+                  <div class="mock-row">
+                    <span class="name">🖼 hero.png</span
+                    ><span class="meta">2.4 MB · 3 days ago</span>
+                  </div>
+                  <div class="mock-row">
+                    <span class="name">📄 changelog.md</span
+                    ><span class="meta">12 KB · today</span>
+                  </div>
+                  <div class="mock-row">
+                    <span class="name">🎬 demo.mp4</span
+                    ><span class="meta">184 MB · 1 hour ago</span>
+                  </div>
+
+                  <div class="dock">
+                    <div class="dock-title">
+                      <span>Transfers</span
+                      ><span style="color: var(--brand-violet)">2 running</span>
+                    </div>
+                    <div class="dock-row">
+                      ⬆️ demo.mp4 → media-assets/2026/
+                      <div class="bar"><span style="width: 62%"></span></div>
+                    </div>
+                    <div class="dock-row">
+                      ↔️ press-kit.zip — Production AWS → Cloudflare R2
+                      <div class="bar"><span style="width: 34%"></span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="container">
+          <div class="section-title">
+            <h2>Built for people who actually use S3.</h2>
+            <p>
+              Connections live next to your work. Transfers stay out of your
+              way. Secrets stay in your Keychain.
+            </p>
+          </div>
+
+          <div class="grid">
+            <div class="card">
+              <div class="icon">☁️</div>
+              <h3>Multi-provider</h3>
+              <p>
+                AWS S3, Cloudflare R2, MinIO, Backblaze B2 and any S3-compatible
+                endpoint. Save as many connection profiles as you need.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">📦</div>
+              <h3>Bucket browser</h3>
+              <p>
+                Folder-style navigation, breadcrumbs, multi-select, context
+                menus, drag-and-drop upload and recursive download.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">🚀</div>
+              <h3>Transfer queue</h3>
+              <p>
+                A bottom-right dock tracks every upload, download, and copy.
+                Cancel running transfers and retry the failures.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">↔️</div>
+              <h3>Bucket-to-bucket copy</h3>
+              <p>
+                Move objects between buckets, even across providers. Pick a
+                destination connection, bucket and prefix.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">🔐</div>
+              <h3>Keychain-backed secrets</h3>
+              <p>
+                Access keys live in the macOS Keychain under
+                <code>com.bucketdock.app</code>. Never in plaintext, never in
+                browser storage.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">🦀</div>
+              <h3>Rust backend</h3>
+              <p>
+                All S3 traffic is signed by the Rust AWS SDK in the desktop
+                process. The UI never speaks S3 directly from the browser
+                runtime.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">🗂</div>
+              <h3>Object metadata</h3>
+              <p>
+                Inspect and edit Content-Type, Cache-Control,
+                Content-Disposition and custom user metadata in place.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">🌗</div>
+              <h3>Native feel</h3>
+              <p>
+                Hidden titlebar, native file pickers, light and dark mode,
+                persistent sidebar width and selection state.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container" style="text-align: center">
+          <div
+            class="panel"
+            style="
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 18px;
+            "
+          >
+            <h2
+              style="
+                margin: 0;
+                font-size: clamp(24px, 3vw, 34px);
+                letter-spacing: -0.02em;
+              "
+            >
+              Get BucketDock for macOS
+            </h2>
+            <p style="margin: 0; color: var(--text-dim); max-width: 520px">
+              Universal binary for Apple Silicon and Intel Macs. Open source
+              under Apache 2.0.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="download.html"
+                >Download latest release</a
+              >
+              <a class="btn btn-ghost" href="docs.html">Read the docs →</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container footer-inner">
+        <div class="brand">
+          <img
+            src="assets/logo.svg"
+            alt="BucketDock logo"
+            width="22"
+            height="22"
+          />
+          <span>BucketDock</span>
+        </div>
+        <div class="footer-links">
+          <a href="docs.html">Docs</a>
+          <a href="download.html">Download</a>
+          <a
+            href="https://github.com/bucketdock/bucketdock"
+            target="_blank"
+            rel="noopener"
+            >GitHub</a
+          >
+          <a
+            href="https://github.com/bucketdock/bucketdock/blob/main/LICENSE"
+            target="_blank"
+            rel="noopener"
+            >License</a
+          >
+        </div>
+      </div>
+      <div class="container" style="margin-top: 18px; color: var(--text-faint)">
+        © <span id="y"></span> BucketDock. Apache License 2.0. The BucketDock
+        name, logo, icon and official builds are covered by the project's brand
+        policy.
+      </div>
+    </footer>
+
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

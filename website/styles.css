@@ -1,0 +1,532 @@
+/* BucketDock website — dark theme, brand gradient */
+
+:root {
+  --bg: #0a0a0d;
+  --bg-soft: #131319;
+  --bg-card: #16161d;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #f4f4f6;
+  --text-dim: #a8a8b3;
+  --text-faint: #6c6c78;
+  --brand-blue: #5ba8ff;
+  --brand-violet: #a78bfa;
+  --brand-pink: #f472b6;
+  --gradient: linear-gradient(
+    90deg,
+    var(--brand-blue),
+    var(--brand-violet),
+    var(--brand-pink)
+  );
+  --gradient-soft: linear-gradient(
+    135deg,
+    rgba(91, 168, 255, 0.18),
+    rgba(167, 139, 250, 0.18),
+    rgba(244, 114, 182, 0.18)
+  );
+  --shadow: 0 30px 80px -30px rgba(167, 139, 250, 0.3);
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui,
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Background ambience */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(
+      900px 600px at 80% -10%,
+      rgba(244, 114, 182, 0.1),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 600px at -10% 10%,
+      rgba(91, 168, 255, 0.1),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 500px at 50% 110%,
+      rgba(167, 139, 250, 0.1),
+      transparent 60%
+    );
+  pointer-events: none;
+}
+
+a {
+  color: var(--brand-violet);
+  text-decoration: none;
+}
+a:hover {
+  color: #c0a8ff;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── Nav ─────────────────────────────────────────────────────────────────── */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  background: rgba(10, 10, 13, 0.7);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.brand img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+.nav-links {
+  display: flex;
+  gap: 22px;
+  font-size: 14px;
+}
+.nav-links a {
+  color: var(--text-dim);
+  transition: color 0.15s ease;
+}
+.nav-links a:hover {
+  color: var(--text);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+  text-decoration: none;
+  color: var(--text);
+}
+.btn:hover {
+  transform: translateY(-1px);
+}
+.btn-primary {
+  background: var(--gradient);
+  color: #0a0a0d;
+  box-shadow: var(--shadow);
+}
+.btn-primary:hover {
+  color: #0a0a0d;
+  box-shadow: 0 30px 80px -25px rgba(244, 114, 182, 0.45);
+}
+.btn-secondary {
+  background: var(--bg-card);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.btn-secondary:hover {
+  background: #1d1d26;
+  color: var(--text);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+}
+.btn-ghost:hover {
+  color: var(--text);
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────────── */
+
+.hero {
+  padding: 100px 0 80px;
+  text-align: center;
+  position: relative;
+}
+.hero-eyebrow {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--gradient-soft);
+  border: 1px solid var(--border-strong);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 22px;
+}
+.hero h1 {
+  font-size: clamp(38px, 6vw, 64px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  margin: 0 0 22px;
+  background: linear-gradient(180deg, #ffffff 0%, #b8b8c5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero h1 .accent {
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero p {
+  font-size: clamp(16px, 1.6vw, 19px);
+  color: var(--text-dim);
+  max-width: 640px;
+  margin: 0 auto 36px;
+}
+.hero-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+.hero-meta {
+  margin-top: 22px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+
+section {
+  padding: 80px 0;
+}
+
+.section-title {
+  text-align: center;
+  margin-bottom: 56px;
+}
+.section-title h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+.section-title p {
+  color: var(--text-dim);
+  margin: 0 auto;
+  max-width: 600px;
+}
+
+/* ── Feature grid ────────────────────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+.card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+.card .icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--gradient-soft);
+  border: 1px solid var(--border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  font-size: 18px;
+}
+.card h3 {
+  font-size: 16px;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.card p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+/* ── Showcase / panel ────────────────────────────────────────────────────── */
+
+.panel {
+  background: linear-gradient(180deg, var(--bg-soft), var(--bg-card));
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 36px;
+}
+
+/* Mock app window */
+.mock {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #0e0e13;
+  box-shadow:
+    0 40px 80px -30px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(167, 139, 250, 0.04);
+}
+.mock-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border);
+}
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.dot.r {
+  background: #ff5f56;
+}
+.dot.y {
+  background: #ffbd2e;
+}
+.dot.g {
+  background: #27c93f;
+}
+.mock-title {
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.mock-body {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  min-height: 320px;
+}
+.mock-side {
+  background: rgba(255, 255, 255, 0.02);
+  border-right: 1px solid var(--border);
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.mock-side .item {
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.mock-side .item.active {
+  background: rgba(167, 139, 250, 0.16);
+  color: var(--text);
+}
+.mock-main {
+  padding: 18px;
+}
+.mock-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.mock-row .name {
+  color: var(--text);
+}
+.mock-row .meta {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* Transfer dock preview */
+.dock {
+  margin-top: 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.dock-title {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 10px;
+  color: var(--text-dim);
+}
+.bar {
+  height: 6px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--gradient);
+  border-radius: 999px;
+}
+.dock-row {
+  font-size: 12px;
+}
+.dock-row + .dock-row {
+  margin-top: 12px;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 0 60px;
+  margin-top: 40px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.footer-links a {
+  color: var(--text-dim);
+  margin-left: 18px;
+}
+.footer-links a:hover {
+  color: var(--text);
+}
+
+/* ── Markdown / docs ─────────────────────────────────────────────────────── */
+
+.prose {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.prose h1 {
+  font-size: 38px;
+  letter-spacing: -0.02em;
+  margin-top: 0;
+}
+.prose h2 {
+  font-size: 24px;
+  letter-spacing: -0.01em;
+  margin-top: 48px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.prose h3 {
+  font-size: 18px;
+  margin-top: 28px;
+}
+.prose code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.prose pre {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+.prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+}
+.prose ul {
+  padding-left: 22px;
+}
+.prose li {
+  margin: 4px 0;
+  color: var(--text-dim);
+}
+.prose li strong,
+.prose p strong {
+  color: var(--text);
+}
+.prose p {
+  color: var(--text-dim);
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 700px) {
+  .nav-links {
+    display: none;
+  }
+  .mock-body {
+    grid-template-columns: 1fr;
+  }
+  .mock-side {
+    display: none;
+  }
+  .hero {
+    padding: 70px 0 40px;
+  }
+  section {
+    padding: 56px 0;
+  }
+}
