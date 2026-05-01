@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/bucketdock/bucketdock/compare/v0.1.1...v0.1.2) (2026-05-01)
+
+
+### Bug Fixes
+
+* package versions ([34177a6](https://github.com/bucketdock/bucketdock/commit/34177a6fa01df0816da29cf0d766340517d4b00c))
+
 ## [0.1.1](https://github.com/bucketdock/bucketdock/compare/v0.1.0...v0.1.1) (2026-05-01)
 
 
