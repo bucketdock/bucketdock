@@ -193,15 +193,36 @@ jobs:
 
       - name: Build BucketDock
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm tauri build --target ${{ matrix.target }}
+          SIGNING_MODE: ${{ steps.apple-config.outputs.signing_mode }}
+          NOTARY_MODE: ${{ steps.apple-config.outputs.notary_mode }}
+          SECRET_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          SECRET_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SECRET_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          SECRET_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          SECRET_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          SECRET_APPLE_ID: ${{ secrets.APPLE_ID }}
+          SECRET_APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          SECRET_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$SIGNING_MODE" = 'developer-id' ]; then
+            export APPLE_CERTIFICATE="$SECRET_APPLE_CERTIFICATE"
+            export APPLE_CERTIFICATE_PASSWORD="$SECRET_APPLE_CERTIFICATE_PASSWORD"
+            export APPLE_SIGNING_IDENTITY="$SECRET_APPLE_SIGNING_IDENTITY"
+
+            if [ "$NOTARY_MODE" = 'api' ]; then
+              export APPLE_API_ISSUER="$SECRET_APPLE_API_ISSUER"
+              export APPLE_API_KEY="$SECRET_APPLE_API_KEY"
+            elif [ "$NOTARY_MODE" = 'apple-id' ]; then
+              export APPLE_ID="$SECRET_APPLE_ID"
+              export APPLE_PASSWORD="$SECRET_APPLE_PASSWORD"
+              export APPLE_TEAM_ID="$SECRET_APPLE_TEAM_ID"
+            fi
+          fi
+
+          pnpm tauri build --target ${{ matrix.target }}
 
       - name: Validate macOS bundle
         shell: bash
