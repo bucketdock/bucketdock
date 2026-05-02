@@ -243,6 +243,14 @@ img {
   font-size: 12px;
   color: var(--text-faint);
 }
+.hero-meta a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.18);
+}
+.hero-meta a:hover {
+  color: var(--text);
+}
 
 /* ── Sections ────────────────────────────────────────────────────────────── */
 
@@ -430,6 +438,116 @@ section {
   margin-top: 12px;
 }
 
+/* ── Install guide ──────────────────────────────────────────────────────── */
+
+.notice-banner {
+  margin-bottom: 22px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(244, 197, 66, 0.32);
+  background: linear-gradient(
+    135deg,
+    rgba(244, 197, 66, 0.16),
+    rgba(244, 114, 182, 0.08)
+  );
+  color: #f1e4b6;
+}
+.notice-banner strong {
+  color: #fff4cf;
+}
+
+.install-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 22px;
+  align-items: start;
+}
+.install-copy h2 {
+  margin: 0 0 12px;
+  font-size: clamp(28px, 4vw, 40px);
+  letter-spacing: -0.02em;
+}
+.install-copy p {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+}
+.install-panel code,
+.shot-card code,
+.card code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.install-panel pre,
+.shot-card pre {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+.install-panel pre code,
+.shot-card pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+}
+.install-steps {
+  margin: 0 0 18px;
+  padding-left: 22px;
+  color: var(--text-dim);
+}
+.install-steps li {
+  margin: 0 0 10px;
+}
+.small-note {
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.shot-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+.shot-frame {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.01)
+  );
+  padding: 14px;
+}
+.shot-card h3 {
+  margin: 18px 0 10px;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+.shot-card p {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+}
+.shot-list {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+.shot-list li {
+  margin: 0 0 8px;
+  color: var(--text-dim);
+}
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 
 footer {
@@ -516,6 +634,10 @@ footer {
 @media (max-width: 700px) {
   .nav-links {
     display: none;
+  }
+  .install-panel,
+  .shot-grid {
+    grid-template-columns: 1fr;
   }
   .mock-body {
     grid-template-columns: 1fr;

@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Download · BucketDock</title>
+    <title>Download &amp; Install · BucketDock</title>
     <meta
       name="description"
-      content="Download the latest BucketDock release for macOS — DMG and .app builds for Apple Silicon and Intel."
+      content="Download the current BucketDock macOS developer preview and follow the first-launch install steps for unsigned builds."
     />
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
     <link
@@ -48,11 +48,15 @@
     <main>
       <section class="hero" style="padding-bottom: 40px">
         <div class="container">
-          <span class="hero-eyebrow">macOS · Apple Silicon &amp; Intel</span>
-          <h1>Download <span class="accent">BucketDock</span></h1>
+          <span class="hero-eyebrow"
+            >macOS developer preview · Apple Silicon &amp; Intel</span
+          >
+          <h1>Download &amp; install <span class="accent">BucketDock</span></h1>
           <p>
-            Each release is published on GitHub. Pick the build that matches
-            your Mac.
+            Current public releases are unsigned developer-preview builds.
+            Download the DMG that matches your Mac, drag BucketDock into
+            Applications, and use the first-launch steps below if macOS blocks
+            the app after download.
           </p>
           <div class="hero-actions">
             <a
@@ -60,26 +64,32 @@
               href="https://github.com/bucketdock/bucketdock/releases/latest"
               target="_blank"
               rel="noopener"
-              >Latest release on GitHub</a
+              >Latest preview on GitHub</a
             >
-            <a
-              class="btn btn-secondary"
-              href="https://github.com/bucketdock/bucketdock/releases"
-              target="_blank"
-              rel="noopener"
-              >All releases</a
+            <a class="btn btn-secondary" href="#macos-notice"
+              >First-launch install guide</a
             >
+          </div>
+          <div class="hero-meta">
+            Ad-hoc signed for development · Not Apple Developer ID signed · Not
+            notarized yet
           </div>
         </div>
       </section>
 
       <section style="padding-top: 0">
         <div class="container">
+          <div class="notice-banner" id="macos-notice">
+            <strong>macOS notice.</strong> BucketDock is not yet signed with
+            Apple Developer ID and is not notarized. macOS may show
+            “BucketDock.app” is damaged or refuse to open it after download.
+            That is expected for the current developer-preview build.
+          </div>
           <div class="grid">
             <div class="card">
               <div class="icon">🍎</div>
               <h3>macOS · Apple Silicon</h3>
-              <p>For M1, M2, M3 and newer Macs.</p>
+              <p>For M1, M2, M3 and newer Macs. Download the latest DMG.</p>
               <p style="margin-top: 12px">
                 <a
                   class="btn btn-secondary"
@@ -94,7 +104,7 @@
             <div class="card">
               <div class="icon">💻</div>
               <h3>macOS · Intel</h3>
-              <p>For Intel-based Macs.</p>
+              <p>For Intel-based Macs. Download the latest DMG.</p>
               <p style="margin-top: 12px">
                 <a
                   class="btn btn-secondary"
@@ -127,15 +137,130 @@
       </section>
 
       <section>
+        <div class="container">
+          <div class="panel install-panel">
+            <div class="install-copy">
+              <h2>How to open the current preview build</h2>
+              <p>
+                Install the app normally first. Only use Terminal if macOS
+                blocks the first launch.
+              </p>
+              <ol class="install-steps">
+                <li>Download the latest DMG from GitHub Releases <a href="https://github.com/bucketdock/bucketdock/releases" target="_blank" rel="noopener">https://github.com/bucketdock/bucketdock/releases</a> .</li>
+                <li>
+                  Open the DMG and drag <code>BucketDock.app</code> into
+                  <code>Applications</code>.
+                </li>
+                <li>
+                  If you see a damaged or blocked-app message, open
+                  <strong>Terminal.app</strong> from <code>Applications</code> →
+                  <code>Utilities</code> → <code>Terminal</code>.
+                </li>
+                <li>Paste the commands below and press <code>Return</code>.</li>
+              </ol>
+              <pre><code>xattr -dr com.apple.quarantine /Applications/BucketDock.app
+open /Applications/BucketDock.app</code></pre>
+              <p class="small-note">
+                You only need to run these commands after moving BucketDock into
+                <code>Applications</code>. If you later replace the app with a
+                newer downloaded build, you may need to run them again.
+              </p>
+            </div>
+            <div class="card">
+              <div class="icon">🧭</div>
+              <h3>What these commands do</h3>
+              <p>
+                <code>xattr -dr com.apple.quarantine ...</code> removes the
+                quarantine attribute that macOS added because the app came from
+                the internet.
+              </p>
+              <p>
+                <code>open ...</code> launches BucketDock immediately after the
+                quarantine flag is removed.
+              </p>
+              <p class="small-note">
+                These commands touch only
+                <code>/Applications/BucketDock.app</code>. They do not disable
+                Gatekeeper for the rest of your Mac.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <div class="section-title">
+            <h2>What you may see on first launch</h2>
+            <p>
+              These dialogs are normal for the current preview build and are the
+              ones most users will see first.
+            </p>
+          </div>
+
+          <div class="shot-grid">
+            <article class="shot-card">
+              <div class="shot-frame">
+                <img
+                  src="assets/macos-damaged-app-warning.png"
+                  alt="macOS warning dialog saying BucketDock.app is damaged and should be moved to the Trash"
+                  width="340"
+                  height="343"
+                />
+              </div>
+              <h3>The “BucketDock.app is damaged” warning</h3>
+              <p>
+                This happens because the current public build is a developer
+                preview. It is not Apple Developer ID signed and not notarized
+                yet, so macOS keeps it in quarantine after download.
+              </p>
+              <p>
+                After you drag the app to <code>Applications</code>, open
+                <code>Terminal.app</code> and run:
+              </p>
+              <pre><code>xattr -dr com.apple.quarantine /Applications/BucketDock.app
+open /Applications/BucketDock.app</code></pre>
+              <p class="small-note">
+                Terminal is located at <code>Applications</code> →
+                <code>Utilities</code> → <code>Terminal</code>.
+              </p>
+            </article>
+
+            <article class="shot-card">
+              <div class="shot-frame">
+                <img
+                  src="assets/macos-keychain-access-prompt.png"
+                  alt="macOS Keychain permission prompt asking whether BucketDock may access credentials stored under com.bucketdock.app"
+                  width="488"
+                  height="239"
+                />
+              </div>
+              <h3>The Keychain access prompt</h3>
+              <p>
+                This popup is macOS asking whether BucketDock may store and read
+                your S3 secrets in the macOS Keychain under
+                <code>com.bucketdock.app</code>.
+              </p>
+              <ul class="shot-list">
+                <li>
+                  <strong>Always Allow</strong> is the smoothest option if you
+                  want saved connections to keep working without repeated
+                  prompts.
+                </li>
+
+              </ul>
+              <p class="small-note">
+                The password field is your Mac login password because the
+                request targets your <code>login</code> keychain.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section>
         <div class="container prose">
-          <h2>First-launch note</h2>
-          <p>
-            BucketDock release builds are not yet notarized by Apple. On first
-            launch you may need to open the DMG, drag the app into
-            <code>Applications</code>, then right-click the app and choose
-            <strong>Open</strong> to confirm the launch.
-          </p>
-          <h2>What's new</h2>
+          <h2>Release notes</h2>
           <p>
             See the
             <a

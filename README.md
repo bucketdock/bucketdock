@@ -10,6 +10,26 @@ It combines:
 - a Tauri 2 desktop shell
 - a Rust backend that performs all storage operations
 
+## macOS notice
+
+This is an unsigned developer-preview build. It is not signed with Apple Developer ID and is not notarized.
+
+macOS may say: "the app is damaged or cannot be opened". To run it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/BucketDock.app
+open /Applications/BucketDock.app
+```
+
+For screenshots and step-by-step first-launch help, see the
+[download and install guide](https://bucketdock.com/install.html).
+
+### macOS Gatekeeper note
+
+Current builds are ad-hoc signed but not Apple-notarized. macOS may block them after download. This is expected for early developer-preview builds.
+
+Official signed and notarized builds are planned later.
+
 ## Implemented Features
 
 ### Connections
@@ -329,14 +349,6 @@ For bucket-scoped R2 credentials, BucketDock skips the account-wide `ListBuckets
 ### Saved Connection Works Only While Editing
 
 If typing the secret into the edit form makes `Test` pass, but testing the saved connection fails, the saved secret is missing. Open `Edit Connection`, enter the Secret Access Key again, and click `Save` so BucketDock can write it into the macOS Keychain.
-
-## Notes On Current Behavior
-
-- Folder rename is not supported yet.
-- Object rename is implemented as copy plus delete.
-- Recursive folder delete removes all objects under the selected prefix.
-- Metadata editing uses a copy-with-replace flow through S3-compatible APIs.
-- The frontend is exported statically and loaded by Tauri from `out/`.
 
 ## License
 
