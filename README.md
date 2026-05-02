@@ -22,7 +22,7 @@ open /Applications/BucketDock.app
 ```
 
 For screenshots and step-by-step first-launch help, see the
-[download and install guide](https://bucketdock.com/install.html).
+[download and install guide](https://bucketdock.com/download.html).
 
 ### macOS Gatekeeper note
 
