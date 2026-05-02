@@ -33,14 +33,14 @@ jobs:
         run: |
           set -e
           test -f website/index.html
-          test -f website/download.html
+          test -f website/install.html
           test -f website/docs.html
           test -f website/styles.css
           test -f website/CNAME
           test -f website/assets/logo.svg
           test -f website/assets/logo.png
           # Make sure every page references the stylesheet.
-          for f in website/index.html website/download.html website/docs.html; do
+          for f in website/index.html website/install.html website/docs.html; do
             grep -q 'styles.css' "$f"
           done
           echo "website/ looks ok"
