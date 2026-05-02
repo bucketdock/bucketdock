@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/bucketdock/bucketdock/compare/v0.1.2...v0.1.3) (2026-05-02)
+
+
+### Features
+
+* improve installation instructions ([66a7a4f](https://github.com/bucketdock/bucketdock/commit/66a7a4f9dbb263288d013baa191f8bbfd96ce62e))
+
 ## [0.1.2](https://github.com/bucketdock/bucketdock/compare/v0.1.1...v0.1.2) (2026-05-01)
 
 
