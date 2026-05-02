@@ -225,6 +225,9 @@ jobs:
           pnpm tauri build --target ${{ matrix.target }}
 
       - name: Validate macOS bundle
+        env:
+          SIGNING_MODE: ${{ steps.apple-config.outputs.signing_mode }}
+          NOTARY_MODE: ${{ steps.apple-config.outputs.notary_mode }}
         shell: bash
         run: |
           set -euo pipefail
@@ -232,18 +235,22 @@ jobs:
           dmg_path=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -name '*.dmg' | head -n1)
 
           if [ -z "$app_dir" ] || [ -z "$dmg_path" ]; then
-            echo 'Expected signed macOS artifacts were not produced.' >&2
+            echo 'Expected macOS artifacts were not produced.' >&2
             exit 1
           fi
 
-          codesign --verify --deep --strict --verbose=2 "$app_dir"
+          if [ "$SIGNING_MODE" = 'developer-id' ]; then
+            codesign --verify --deep --strict --verbose=2 "$app_dir"
 
-          if [ "${{ steps.apple-config.outputs.notary_mode }}" = 'api' ] || [ "${{ steps.apple-config.outputs.notary_mode }}" = 'apple-id' ]; then
-            spctl -a -t exec -vv "$app_dir"
-            xcrun stapler validate "$app_dir"
-            xcrun stapler validate "$dmg_path"
+            if [ "$NOTARY_MODE" = 'api' ] || [ "$NOTARY_MODE" = 'apple-id' ]; then
+              spctl -a -t exec -vv "$app_dir"
+              xcrun stapler validate "$app_dir"
+              xcrun stapler validate "$dmg_path"
+            else
+              echo 'Skipping Gatekeeper and stapler validation because notarization is not configured.'
+            fi
           else
-            echo 'Skipping Gatekeeper and stapler validation for the unsigned developer-preview build.'
+            echo 'Skipping signature and notarization validation for the unsigned developer-preview build.'
           fi
 
       - name: Collect artifacts
