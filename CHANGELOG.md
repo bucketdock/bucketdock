@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/bucketdock/bucketdock/compare/v0.1.5...v0.1.6) (2026-05-02)
+
+
+### Bug Fixes
+
+* fix github workflow ([e63113a](https://github.com/bucketdock/bucketdock/commit/e63113ae3ddf4b15c614d33402d1b5650df7579b))
+
 ## [0.1.5](https://github.com/bucketdock/bucketdock/compare/v0.1.4...v0.1.5) (2026-05-02)
 
 
