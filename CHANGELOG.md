@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/bucketdock/bucketdock/compare/v0.1.3...v0.1.4) (2026-05-02)
+
+
+### Bug Fixes
+
+* iniate relese creation ([3802ab0](https://github.com/bucketdock/bucketdock/commit/3802ab0f29b9c86c35c6fd7deda7ac359a0e8492))
+
 ## [0.1.3](https://github.com/bucketdock/bucketdock/compare/v0.1.2...v0.1.3) (2026-05-02)
 
 
