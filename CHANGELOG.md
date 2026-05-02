@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5](https://github.com/bucketdock/bucketdock/compare/v0.1.4...v0.1.5) (2026-05-02)
+
+
+### Bug Fixes
+
+* fix links in README.md ([37f4b82](https://github.com/bucketdock/bucketdock/commit/37f4b826b51778e2f788289124b92d9628c6c3d6))
+* fix website links ([9297bc5](https://github.com/bucketdock/bucketdock/commit/9297bc5ec7397708eb9e9a30735ea3367b034e2a))
+
 ## [0.1.4](https://github.com/bucketdock/bucketdock/compare/v0.1.3...v0.1.4) (2026-05-02)
 
 
