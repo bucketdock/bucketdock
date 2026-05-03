@@ -41,3 +41,4 @@ dirs = "5"
 uuid = { version = "1", features = ["v4", "serde"] }
 aws-smithy-types = "1"
 walkdir = "2"
+base64 = "0.22"

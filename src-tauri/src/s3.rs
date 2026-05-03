@@ -77,6 +77,21 @@ pub struct ObjectInfo {
     pub size: i64,
     pub last_modified: Option<DateTime<Utc>>,
     pub etag: Option<String>,
+    /// e.g. STANDARD, INTELLIGENT_TIERING, GLACIER, ...
+    pub storage_class: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ObjectPreview {
+    /// Detected content type (from S3 head, or sniffed from first bytes).
+    pub content_type: Option<String>,
+    /// Total object size.
+    pub size: i64,
+    /// True if the returned bytes are the entire object.
+    pub complete: bool,
+    /// Base64-encoded body slice (always base64 so the JSON IPC bridge stays
+    /// safe for binary data).
+    pub body_b64: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -225,6 +240,7 @@ impl S3Client {
                 size: obj.size().unwrap_or(0),
                 last_modified: obj.last_modified().and_then(aws_dt_to_chrono),
                 etag: obj.e_tag().map(|s| s.trim_matches('"').to_string()),
+                storage_class: obj.storage_class().map(|sc| sc.as_str().to_string()),
             })
             .collect();
 
@@ -411,6 +427,7 @@ impl S3Client {
                     size: obj.size().unwrap_or(0),
                     last_modified: obj.last_modified().and_then(aws_dt_to_chrono),
                     etag: obj.e_tag().map(|s| s.trim_matches('"').to_string()),
+                    storage_class: obj.storage_class().map(|sc| sc.as_str().to_string()),
                 });
             }
 
@@ -655,5 +672,249 @@ impl S3Client {
             .map_err(fmt_sdk_err)?;
 
         Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Streaming upload with progress (multipart for large files)
+    // -----------------------------------------------------------------------
+
+    /// Upload a local file emitting a callback for every bytes-written
+    /// milestone. For files larger than `part_size` a multipart upload is
+    /// used so each completed part fires a progress callback.
+    ///
+    /// Returns the total uploaded byte count. The caller is responsible for
+    /// translating the callback into transfer-queue events.
+    pub async fn upload_file_with_progress<F>(
+        &self,
+        bucket: &str,
+        key: &str,
+        local_path: &str,
+        mut on_progress: F,
+    ) -> Result<u64>
+    where
+        F: FnMut(u64) + Send,
+    {
+        use aws_sdk_s3::primitives::ByteStream;
+        use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+        use bytes::Bytes;
+        use std::path::Path;
+        use tokio::io::AsyncReadExt;
+
+        let size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+        // S3 minimum part size is 5 MiB; use 8 MiB so we don't fragment too much.
+        let part_size: u64 = 8 * 1024 * 1024;
+
+        // Small file \u2014 single PutObject.
+        if size <= part_size {
+            let body = ByteStream::from_path(Path::new(local_path))
+                .await
+                .map_err(fmt_sdk_err)?;
+            self.client
+                .put_object()
+                .bucket(bucket)
+                .key(key)
+                .body(body)
+                .send()
+                .await
+                .map_err(fmt_sdk_err)?;
+            on_progress(size);
+            return Ok(size);
+        }
+
+        // Multipart upload.
+        let create = self
+            .client
+            .create_multipart_upload()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(fmt_sdk_err)?;
+        let upload_id = create
+            .upload_id()
+            .ok_or_else(|| Error::S3("missing upload id".into()))?
+            .to_string();
+
+        let result: Result<Vec<CompletedPart>> = async {
+            let mut file = tokio::fs::File::open(local_path).await?;
+            let mut completed: Vec<CompletedPart> = Vec::new();
+            let mut buf = vec![0u8; part_size as usize];
+            let mut part_number: i32 = 1;
+            let mut loaded: u64 = 0;
+            loop {
+                // Fill buffer; read may return short reads.
+                let mut filled = 0usize;
+                while filled < buf.len() {
+                    let n = file.read(&mut buf[filled..]).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    filled += n;
+                }
+                if filled == 0 {
+                    break;
+                }
+                let chunk = Bytes::copy_from_slice(&buf[..filled]);
+                let body = ByteStream::from(chunk);
+                let resp = self
+                    .client
+                    .upload_part()
+                    .bucket(bucket)
+                    .key(key)
+                    .upload_id(&upload_id)
+                    .part_number(part_number)
+                    .body(body)
+                    .send()
+                    .await
+                    .map_err(fmt_sdk_err)?;
+                completed.push(
+                    CompletedPart::builder()
+                        .set_e_tag(resp.e_tag().map(|s| s.to_string()))
+                        .part_number(part_number)
+                        .build(),
+                );
+                loaded += filled as u64;
+                on_progress(loaded);
+                part_number += 1;
+                if filled < buf.len() {
+                    break;
+                }
+            }
+            Ok(completed)
+        }
+        .await;
+
+        match result {
+            Ok(completed) => {
+                let mp = CompletedMultipartUpload::builder()
+                    .set_parts(Some(completed))
+                    .build();
+                self.client
+                    .complete_multipart_upload()
+                    .bucket(bucket)
+                    .key(key)
+                    .upload_id(&upload_id)
+                    .multipart_upload(mp)
+                    .send()
+                    .await
+                    .map_err(fmt_sdk_err)?;
+                Ok(size)
+            }
+            Err(e) => {
+                // Best-effort abort to avoid lingering multipart charges.
+                let _ = self
+                    .client
+                    .abort_multipart_upload()
+                    .bucket(bucket)
+                    .key(key)
+                    .upload_id(&upload_id)
+                    .send()
+                    .await;
+                Err(e)
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Folder rename / move (same bucket) and cross-bucket folder copy
+    // -----------------------------------------------------------------------
+
+    /// Rename / move a folder within the same bucket by copying every key
+    /// under `old_prefix` to the equivalent location under `new_prefix` and
+    /// then deleting the originals. Both prefixes must end with '/'.
+    pub async fn rename_prefix(
+        &self,
+        bucket: &str,
+        old_prefix: &str,
+        new_prefix: &str,
+    ) -> Result<u64> {
+        if !old_prefix.ends_with('/') || !new_prefix.ends_with('/') {
+            return Err(Error::Other("folder prefixes must end with '/'".into()));
+        }
+        if old_prefix == new_prefix {
+            return Ok(0);
+        }
+        if new_prefix.starts_with(old_prefix) {
+            return Err(Error::Other(
+                "cannot move a folder into itself".into(),
+            ));
+        }
+        let objects = self.list_all_keys(bucket, old_prefix).await?;
+        let mut count: u64 = 0;
+        for obj in &objects {
+            let suffix = obj.key.strip_prefix(old_prefix).unwrap_or("");
+            let new_key = format!("{}{}", new_prefix, suffix);
+            let copy_source = format!("{}/{}", bucket, percent_encode_key(&obj.key));
+            self.client
+                .copy_object()
+                .bucket(bucket)
+                .copy_source(&copy_source)
+                .key(&new_key)
+                .send()
+                .await
+                .map_err(fmt_sdk_err)?;
+            count += 1;
+        }
+        let keys: Vec<String> = objects.into_iter().map(|o| o.key).collect();
+        if !keys.is_empty() {
+            self.delete_objects(bucket, keys).await?;
+        }
+        // Also create a placeholder for the new folder if the old one was empty.
+        if count == 0 {
+            self.create_folder(bucket, new_prefix).await?;
+        }
+        Ok(count)
+    }
+
+    /// List every (full) key under `prefix` for use by callers that want to
+    /// enumerate folder contents (e.g. to fan out copy transfers).
+    pub async fn list_keys_under(&self, bucket: &str, prefix: &str) -> Result<Vec<ObjectInfo>> {
+        self.list_all_keys(bucket, prefix).await
+    }
+
+    // -----------------------------------------------------------------------
+    // Preview — read up to `max_bytes` from an object
+    // -----------------------------------------------------------------------
+
+    pub async fn read_object_preview(
+        &self,
+        bucket: &str,
+        key: &str,
+        max_bytes: u64,
+    ) -> Result<ObjectPreview> {
+        use base64::Engine;
+
+        let head = self
+            .client
+            .head_object()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(fmt_sdk_err)?;
+        let total = head.content_length().unwrap_or(0);
+        let content_type = head.content_type().map(|s| s.to_string());
+
+        let mut req = self.client.get_object().bucket(bucket).key(key);
+        let last = max_bytes.saturating_sub(1);
+        let range = format!("bytes=0-{}", last);
+        req = req.range(range);
+
+        let resp = req.send().await.map_err(fmt_sdk_err)?;
+        let bytes = resp
+            .body
+            .collect()
+            .await
+            .map_err(fmt_sdk_err)?
+            .into_bytes();
+        let complete = (bytes.len() as i64) >= total;
+        let body_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+        Ok(ObjectPreview {
+            content_type,
+            size: total,
+            complete,
+            body_b64,
+        })
     }
 }

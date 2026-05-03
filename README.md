@@ -48,6 +48,10 @@ Official signed and notarized builds are planned later.
 - Multi-select in the current listing
 - Context menus for common actions
 - Empty states and loading skeletons
+- Inline filter box in the toolbar (case-insensitive substring match)
+- Sortable columns: Name, Type, Storage Class, Size, Modified
+- Per-row actions menu (…) for keyboard- and mouse-friendly access
+- Modified column shows a short relative time with a full timestamp on hover
 
 ### Object Operations
 
@@ -59,24 +63,29 @@ Official signed and notarized builds are planned later.
 - Download folders recursively
 - Create folder placeholder objects
 - Rename objects
+- Rename / move folders (copy-and-delete across an entire prefix)
 - Delete single objects
 - Delete multiple selected objects
 - Delete prefixes recursively
+- Delete confirmation lists every item that will be removed
 - Open a file through a presigned URL
+- Inline preview for images, audio, video, PDFs, and text files
 - Copy files between buckets, including across different connections and providers
+- Copy whole folders between buckets (recursive multi-file copy)
 
 ### Transfer Queue
 
 - Background queue for uploads, downloads, and bucket-to-bucket copies
 - Per-transfer status (running, done, failed, cancelled)
-- Live progress bar for downloads and copies (uploads show start / complete)
+- Live progress bar for uploads (per-part for multipart), downloads, and copies
 - Cancel a running transfer
 - Retry a failed transfer
 - Dock at the bottom-right with collapse and clear-finished actions
 
 ### Metadata
 
-- View object size, modified time, ETag, and key
+- View object size, modified time, ETag, storage class, and key
+- Dedicated "Get Info" view (read-only) and a separate "Edit Headers" editor
 - Edit Content-Type
 - Edit Cache-Control
 - Edit Content-Disposition
@@ -98,12 +107,8 @@ Official signed and notarized builds are planned later.
 The following items are not implemented in the current codebase and should not be treated as shipped features:
 
 - object tags
-- search and filter UI
-- user-selectable sort controls
-- folder rename, move, or bucket-to-bucket folder copy
 - Finder reveal or open-downloaded-file action
 - bucket policy inspection
-- per-part upload progress (uploads currently report only start and complete)
 
 ## Keyboard Shortcuts
 

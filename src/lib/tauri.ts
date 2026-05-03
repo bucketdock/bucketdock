@@ -34,6 +34,7 @@ export interface ObjectInfo {
   size: number;
   last_modified: string | null;
   etag: string | null;
+  storage_class: string | null;
 }
 
 export interface ListPage {
@@ -203,6 +204,49 @@ export function deletePrefix(
   prefix: string,
 ): Promise<number> {
   return call("delete_prefix", { connectionId, bucket, prefix });
+}
+
+export function renamePrefix(
+  connectionId: string,
+  bucket: string,
+  oldPrefix: string,
+  newPrefix: string,
+): Promise<number> {
+  return call("rename_prefix", {
+    connectionId,
+    bucket,
+    oldPrefix,
+    newPrefix,
+  });
+}
+
+export function listKeysUnder(
+  connectionId: string,
+  bucket: string,
+  prefix: string,
+): Promise<ObjectInfo[]> {
+  return call("list_keys_under", { connectionId, bucket, prefix });
+}
+
+export interface ObjectPreview {
+  content_type: string | null;
+  size: number;
+  complete: boolean;
+  body_b64: string;
+}
+
+export function readObjectPreview(
+  connectionId: string,
+  bucket: string,
+  key: string,
+  maxBytes: number,
+): Promise<ObjectPreview> {
+  return call("read_object_preview", {
+    connectionId,
+    bucket,
+    key,
+    maxBytes,
+  });
 }
 
 export interface ObjectMetadata {

@@ -15,9 +15,15 @@ import {
   ChevronDown,
   Info,
   ArrowRightLeft,
+  Search,
+  MoreHorizontal,
+  Eye,
+  Tag,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatDistanceToNow, format } from "date-fns";
+import { format, formatDistanceToNow, isThisYear } from "date-fns";
 
 import {
   listObjects,
@@ -25,6 +31,7 @@ import {
   deleteObjects,
   createFolder,
   renameObject,
+  renamePrefix,
   getPresignedUrl,
   isTauri,
   uploadFolder,
@@ -47,6 +54,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { ObjectInfoModal } from "@/components/object-info-modal";
+import { FilePreviewModal } from "@/components/file-preview-modal";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -62,21 +70,16 @@ function fileBasename(path: string): string {
   return path.split("/").filter(Boolean).pop() ?? path;
 }
 
-async function collectAllKeys(
-  connId: string,
-  bucket: string,
-  folderPrefix: string,
-): Promise<string[]> {
-  const keys: string[] = [];
-  const page = await listObjects(connId, bucket, folderPrefix);
-  for (const f of page.files) keys.push(f.key);
-  for (const sub of page.folders) {
-    const nested = await collectAllKeys(connId, bucket, sub);
-    keys.push(...nested);
-  }
-  // Include the folder placeholder key itself
-  keys.push(folderPrefix);
-  return keys;
+function fileTypeLabel(key: string): string {
+  const base = fileBasename(key);
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot === base.length - 1) return "File";
+  return base.slice(dot + 1).toUpperCase();
+}
+
+function shortDate(d: Date): string {
+  // Keep it tight in the table cell; full timestamp is in the tooltip.
+  return isThisYear(d) ? format(d, "MMM d, HH:mm") : format(d, "yyyy-MM-dd");
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -90,15 +93,65 @@ interface ListingState {
 
 type ModalState =
   | { type: "delete"; keys: string[] }
-  | { type: "rename"; key: string; currentName: string }
+  | { type: "rename"; key: string; isFolder: boolean; currentName: string }
   | { type: "newFolder" }
   | { type: "copyTo"; keys: string[] }
   | null;
+
+type SortKey = "name" | "type" | "storage" | "size" | "modified";
+type SortDir = "asc" | "desc";
 
 interface ContextMenuInfo {
   position: { x: number; y: number };
   key: string;
   isFolder: boolean;
+}
+
+// ── SortableHeader ────────────────────────────────────────────────────────────
+
+function SortableHeader({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onSort,
+  align,
+  width,
+}: {
+  label: string;
+  col: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (k: SortKey) => void;
+  align: "left" | "right";
+  width?: string;
+}) {
+  const active = sortKey === col;
+  return (
+    <th
+      className={cn(
+        "px-3 py-2 font-medium text-neutral-500 text-xs cursor-pointer select-none",
+        align === "left" ? "text-left" : "text-right",
+        width,
+      )}
+      onClick={() => onSort(col)}
+    >
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-neutral-700 dark:hover:text-neutral-300",
+          align === "right" && "flex-row-reverse",
+        )}
+      >
+        {label}
+        {active &&
+          (sortDir === "asc" ? (
+            <ArrowUp className="w-3 h-3" />
+          ) : (
+            <ArrowDown className="w-3 h-3" />
+          ))}
+      </span>
+    </th>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -130,6 +183,14 @@ export default function ObjectBrowser() {
   const [newFolderValue, setNewFolderValue] = React.useState("");
   const [uploadMenuOpen, setUploadMenuOpen] = React.useState(false);
   const [infoKey, setInfoKey] = React.useState<string | null>(null);
+  const [editHeadersKey, setEditHeadersKey] = React.useState<string | null>(
+    null,
+  );
+  const [previewKey, setPreviewKey] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState("");
+  const [sortKey, setSortKey] = React.useState<SortKey>("name");
+  const [sortDir, setSortDir] = React.useState<SortDir>("asc");
+  const [rowMenu, setRowMenu] = React.useState<ContextMenuInfo | null>(null);
 
   const containerRef = React.useRef<HTMLDivElement>(null);
   const uploadMenuRef = React.useRef<HTMLDivElement>(null);
@@ -167,8 +228,8 @@ export default function ObjectBrowser() {
     try {
       const page = await listObjects(connId, bucket, prefix);
       setListing({
-        folders: [...page.folders].sort((a, b) => a.localeCompare(b)),
-        files: [...page.files].sort((a, b) => a.key.localeCompare(b.key)),
+        folders: page.folders,
+        files: page.files,
         loading: false,
         error: null,
       });
@@ -185,10 +246,53 @@ export default function ObjectBrowser() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const allKeys = React.useMemo(
-    () => [...listing.folders, ...listing.files.map((f) => f.key)],
-    [listing],
-  );
+  const { visibleFolders, visibleFiles, allKeys } = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const matchFolder = (f: string) =>
+      !q || f.slice(prefix.length).toLowerCase().includes(q);
+    const matchFile = (f: ObjectInfo) =>
+      !q || f.key.slice(prefix.length).toLowerCase().includes(q);
+
+    const folders = listing.folders.filter(matchFolder);
+    const files = listing.files.filter(matchFile);
+
+    const dir = sortDir === "asc" ? 1 : -1;
+    const cmpName = (a: string, b: string) => a.localeCompare(b) * dir;
+
+    folders.sort((a, b) =>
+      cmpName(a.slice(prefix.length), b.slice(prefix.length)),
+    );
+
+    files.sort((a, b) => {
+      switch (sortKey) {
+        case "size":
+          return (a.size - b.size) * dir;
+        case "modified": {
+          const at = a.last_modified ? Date.parse(a.last_modified) : 0;
+          const bt = b.last_modified ? Date.parse(b.last_modified) : 0;
+          return (at - bt) * dir;
+        }
+        case "type":
+          return fileTypeLabel(a.key).localeCompare(fileTypeLabel(b.key)) * dir;
+        case "storage":
+          return (
+            (a.storage_class ?? "").localeCompare(b.storage_class ?? "") * dir
+          );
+        case "name":
+        default:
+          return cmpName(
+            a.key.slice(prefix.length),
+            b.key.slice(prefix.length),
+          );
+      }
+    });
+
+    return {
+      visibleFolders: folders,
+      visibleFiles: files,
+      allKeys: [...folders, ...files.map((f) => f.key)],
+    };
+  }, [listing, prefix, search, sortKey, sortDir]);
 
   // ── Drag & drop ────────────────────────────────────────────────────────────
 
@@ -481,12 +585,23 @@ export default function ObjectBrowser() {
     setSelection(new Set());
   };
 
-  const handleRename = async (key: string, newName: string) => {
+  const handleRename = async (
+    key: string,
+    newName: string,
+    isFolder: boolean,
+  ) => {
     if (!connId || !bucket || !newName.trim()) return;
-    const newKey = prefix + newName.trim();
-    const toastId = toast.loading("Renaming…");
+    const trimmed = newName.trim().replace(/\/+$/, "");
+    if (!trimmed) return;
+    const toastId = toast.loading(isFolder ? "Renaming folder…" : "Renaming…");
     try {
-      await renameObject(connId, bucket, key, newKey);
+      if (isFolder) {
+        const newPrefix = prefix + trimmed + "/";
+        await renamePrefix(connId, bucket, key, newPrefix);
+      } else {
+        const newKey = prefix + trimmed;
+        await renameObject(connId, bucket, key, newKey);
+      }
       toast.dismiss(toastId);
       toast.success("Renamed");
     } catch (err) {
@@ -547,6 +662,14 @@ export default function ObjectBrowser() {
       });
     }
 
+    if (!applyToSelection && !isFolder) {
+      items.push({
+        label: "Preview",
+        icon: <Eye className="w-3.5 h-3.5" />,
+        onClick: () => setPreviewKey(key),
+      });
+    }
+
     items.push({
       label: "Download",
       icon: <Download className="w-3.5 h-3.5" />,
@@ -557,19 +680,24 @@ export default function ObjectBrowser() {
       },
     });
 
+    // Copy works for files and folders (folders are expanded server-side
+    // by the copy modal via list_keys_under).
+    items.push({
+      label: applyToSelection ? `Copy ${targets.length} to…` : "Copy to…",
+      icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
+      onClick: () => setModal({ type: "copyTo", keys: targets }),
+    });
+
     if (!applyToSelection) {
       items.push({
         label: "Rename",
         icon: <Pencil className="w-3.5 h-3.5" />,
-        disabled: isFolder,
         onClick: () => {
-          if (isFolder) {
-            toast.error("Folder rename not supported");
-            return;
-          }
-          const currentName = fileBasename(key);
+          const currentName = isFolder
+            ? key.slice(prefix.length).replace(/\/$/, "")
+            : fileBasename(key);
           setRenameValue(currentName);
-          setModal({ type: "rename", key, currentName });
+          setModal({ type: "rename", key, isFolder, currentName });
         },
       });
     }
@@ -580,23 +708,11 @@ export default function ObjectBrowser() {
         icon: <Info className="w-3.5 h-3.5" />,
         onClick: () => setInfoKey(key),
       });
-    }
-
-    if (!isFolder || applyToSelection) {
-      // Copy is supported for files only; if a folder is mixed in the
-      // selection it is silently skipped by the modal.
-      const copyTargets = applyToSelection
-        ? targets.filter((k) => !listing.folders.includes(k))
-        : [key];
-      if (copyTargets.length > 0) {
-        items.push({
-          label: applyToSelection
-            ? `Copy ${copyTargets.length} to…`
-            : "Copy to…",
-          icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
-          onClick: () => setModal({ type: "copyTo", keys: copyTargets }),
-        });
-      }
+      items.push({
+        label: "Edit Headers…",
+        icon: <Tag className="w-3.5 h-3.5" />,
+        onClick: () => setEditHeadersKey(key),
+      });
     }
 
     items.push({
@@ -652,6 +768,8 @@ export default function ObjectBrowser() {
   const hasSelection = selection.size > 0;
   const allChecked = allKeys.length > 0 && selection.size === allKeys.length;
   const someChecked = selection.size > 0 && selection.size < allKeys.length;
+  const singleSelectedIsFile =
+    selection.size === 1 && !listing.folders.includes([...selection][0]);
 
   return (
     <div
@@ -665,7 +783,13 @@ export default function ObjectBrowser() {
       )}
     >
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-black/8 dark:border-white/8 shrink-0 gap-3 min-h-[44px]">
+      {/*
+        `relative z-20` here is important: the table header inside the body
+        creates its own stacking context (sticky + backdrop-blur), so without
+        an explicit z on the toolbar the Upload dropdown would be painted
+        beneath the table head.
+      */}
+      <div className="relative z-20 flex items-center justify-between px-4 py-2 border-b border-black/8 dark:border-white/8 shrink-0 gap-3 min-h-[44px]">
         {/* Breadcrumbs */}
         <nav
           className="flex items-center gap-0.5 min-w-0 overflow-hidden text-sm"
@@ -704,15 +828,70 @@ export default function ObjectBrowser() {
 
         {/* Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter…"
+              className="pl-7 h-7 w-40 text-xs"
+              aria-label="Filter"
+            />
+          </div>
+
           {hasSelection && (
             <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
               {selection.size} selected
             </span>
           )}
+          {hasSelection && selection.size === 1 && singleSelectedIsFile && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPreviewKey([...selection][0])}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Preview
+            </Button>
+          )}
           {hasSelection && (
             <Button variant="ghost" size="sm" onClick={handleHeaderDownload}>
               <Download className="w-3.5 h-3.5" />
               Download
+            </Button>
+          )}
+          {hasSelection && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setModal({ type: "copyTo", keys: [...selection] })}
+              title="Copy to another bucket"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              Copy to…
+            </Button>
+          )}
+          {hasSelection && selection.size === 1 && singleSelectedIsFile && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setInfoKey([...selection][0])}
+              title="Get info"
+            >
+              <Info className="w-3.5 h-3.5" />
+              Info
+            </Button>
+          )}
+          {hasSelection && selection.size === 1 && singleSelectedIsFile && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditHeadersKey([...selection][0])}
+              title="Edit headers and user metadata"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              Headers
             </Button>
           )}
           {hasSelection && (
@@ -758,7 +937,7 @@ export default function ObjectBrowser() {
               <ChevronDown className="w-3 h-3 ml-0.5" />
             </Button>
             {uploadMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 shadow-lg py-1">
+              <div className="absolute right-0 top-full mt-1 z-60 min-w-35 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 shadow-lg py-1">
                 <button
                   className="w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
                   onClick={() => {
@@ -793,12 +972,19 @@ export default function ObjectBrowser() {
                 <th className="text-left px-3 py-2 font-medium text-neutral-500 text-xs">
                   Name
                 </th>
-                <th className="text-right px-3 py-2 font-medium text-neutral-500 text-xs w-28">
+                <th className="text-left px-3 py-2 font-medium text-neutral-500 text-xs w-20">
+                  Type
+                </th>
+                <th className="text-left px-3 py-2 font-medium text-neutral-500 text-xs w-28">
+                  Storage
+                </th>
+                <th className="text-right px-3 py-2 font-medium text-neutral-500 text-xs w-24">
                   Size
                 </th>
-                <th className="text-right px-3 py-2 font-medium text-neutral-500 text-xs w-40">
+                <th className="text-right px-3 py-2 font-medium text-neutral-500 text-xs w-36">
                   Modified
                 </th>
+                <th className="w-8" />
               </tr>
             </thead>
             <tbody>
@@ -815,12 +1001,19 @@ export default function ObjectBrowser() {
                       className={cn("h-4", i % 2 === 0 ? "w-52" : "w-36")}
                     />
                   </td>
+                  <td className="px-3 py-2.5">
+                    <Skeleton className="h-4 w-10" />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <Skeleton className="h-4 w-16" />
+                  </td>
                   <td className="px-3 py-2.5 text-right">
                     <Skeleton className="h-4 w-16 ml-auto" />
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <Skeleton className="h-4 w-24 ml-auto" />
                   </td>
+                  <td />
                 </tr>
               ))}
             </tbody>
@@ -828,13 +1021,21 @@ export default function ObjectBrowser() {
         ) : allKeys.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <EmptyState
-              title="This folder is empty"
-              description="Upload files or create a folder to get started."
+              title={
+                listing.folders.length + listing.files.length === 0
+                  ? "This folder is empty"
+                  : "No matches"
+              }
+              description={
+                listing.folders.length + listing.files.length === 0
+                  ? "Upload files or create a folder to get started."
+                  : "Try a different filter."
+              }
             />
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm">
+            <thead className="sticky top-0 z-1 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm">
               <tr className="border-b border-black/8 dark:border-white/8">
                 <th className="w-10 px-3 py-2">
                   <input
@@ -852,19 +1053,90 @@ export default function ObjectBrowser() {
                     aria-label="Select all"
                   />
                 </th>
-                <th className="text-left px-3 py-2 font-medium text-neutral-500 text-xs">
-                  Name
-                </th>
-                <th className="text-right px-3 py-2 font-medium text-neutral-500 text-xs w-28">
-                  Size
-                </th>
-                <th className="text-right px-3 py-2 font-medium text-neutral-500 text-xs w-40">
-                  Modified
-                </th>
+                <SortableHeader
+                  label="Name"
+                  col="name"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={(k) => {
+                    if (sortKey === k)
+                      setSortDir(sortDir === "asc" ? "desc" : "asc");
+                    else {
+                      setSortKey(k);
+                      setSortDir("asc");
+                    }
+                  }}
+                  align="left"
+                />
+                <SortableHeader
+                  label="Type"
+                  col="type"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={(k) => {
+                    if (sortKey === k)
+                      setSortDir(sortDir === "asc" ? "desc" : "asc");
+                    else {
+                      setSortKey(k);
+                      setSortDir("asc");
+                    }
+                  }}
+                  align="left"
+                  width="w-20"
+                />
+                <SortableHeader
+                  label="Storage"
+                  col="storage"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={(k) => {
+                    if (sortKey === k)
+                      setSortDir(sortDir === "asc" ? "desc" : "asc");
+                    else {
+                      setSortKey(k);
+                      setSortDir("asc");
+                    }
+                  }}
+                  align="left"
+                  width="w-28"
+                />
+                <SortableHeader
+                  label="Size"
+                  col="size"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={(k) => {
+                    if (sortKey === k)
+                      setSortDir(sortDir === "asc" ? "desc" : "asc");
+                    else {
+                      setSortKey(k);
+                      setSortDir("desc");
+                    }
+                  }}
+                  align="right"
+                  width="w-24"
+                />
+                <SortableHeader
+                  label="Modified"
+                  col="modified"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={(k) => {
+                    if (sortKey === k)
+                      setSortDir(sortDir === "asc" ? "desc" : "asc");
+                    else {
+                      setSortKey(k);
+                      setSortDir("desc");
+                    }
+                  }}
+                  align="right"
+                  width="w-36"
+                />
+                <th className="w-8" />
               </tr>
             </thead>
             <tbody>
-              {listing.folders.map((folder) => {
+              {visibleFolders.map((folder) => {
                 const displayName = folder
                   .slice(prefix.length)
                   .replace(/\/$/, "");
@@ -910,22 +1182,50 @@ export default function ObjectBrowser() {
                         <span className="truncate">{displayName}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-right text-neutral-400" />
-                    <td className="px-3 py-2.5 text-right text-neutral-400" />
+                    <td className="px-3 py-2.5 text-neutral-500">Folder</td>
+                    <td className="px-3 py-2.5 text-neutral-400">—</td>
+                    <td className="px-3 py-2.5 text-right text-neutral-400">
+                      —
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-neutral-400">
+                      —
+                    </td>
+                    <td className="px-1.5 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const r = (
+                            e.currentTarget as HTMLElement
+                          ).getBoundingClientRect();
+                          setContextMenu({
+                            position: { x: r.right, y: r.bottom },
+                            key: folder,
+                            isFolder: true,
+                          });
+                        }}
+                        className="p-1 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-500"
+                        aria-label="Actions"
+                        title="Actions"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
-              {listing.files.map((file) => {
+              {visibleFiles.map((file) => {
                 const displayName = file.key.slice(prefix.length);
                 const isSelected = selection.has(file.key);
                 const modDate = file.last_modified
                   ? new Date(file.last_modified)
                   : null;
+                const typeLabel = fileTypeLabel(file.key);
                 return (
                   <tr
                     key={file.key}
                     onClick={(e) => toggleSelect(file.key, e)}
-                    onDoubleClick={() => handleOpenFile(file.key)}
+                    onDoubleClick={() => setPreviewKey(file.key)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({
@@ -960,22 +1260,49 @@ export default function ObjectBrowser() {
                         <span className="truncate">{displayName}</span>
                       </div>
                     </td>
+                    <td className="px-3 py-2.5 text-neutral-500 truncate">
+                      {typeLabel}
+                    </td>
+                    <td className="px-3 py-2.5 text-neutral-500 truncate">
+                      {file.storage_class ?? (
+                        <span className="text-neutral-400">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-right text-neutral-500 tabular-nums">
                       {formatSize(file.size)}
                     </td>
                     <td className="px-3 py-2.5 text-right text-neutral-500 tabular-nums">
                       {modDate ? (
                         <Tooltip
-                          content={format(modDate, "yyyy-MM-dd HH:mm:ss")}
+                          content={`${format(modDate, "yyyy-MM-dd HH:mm:ss")} · ${formatDistanceToNow(modDate, { addSuffix: true })}`}
                           side="left"
                         >
-                          <span>
-                            {formatDistanceToNow(modDate, { addSuffix: true })}
-                          </span>
+                          <span>{shortDate(modDate)}</span>
                         </Tooltip>
                       ) : (
                         <span className="text-neutral-400">—</span>
                       )}
+                    </td>
+                    <td className="px-1.5 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const r = (
+                            e.currentTarget as HTMLElement
+                          ).getBoundingClientRect();
+                          setContextMenu({
+                            position: { x: r.right, y: r.bottom },
+                            key: file.key,
+                            isFolder: false,
+                          });
+                        }}
+                        className="p-1 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-500"
+                        aria-label="Actions"
+                        title="Actions"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -1001,7 +1328,7 @@ export default function ObjectBrowser() {
           onClose={() => setModal(null)}
           title={`Delete ${modal.keys.length} item${modal.keys.length !== 1 ? "s" : ""}?`}
         >
-          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
             This action cannot be undone.
             {modal.keys.some((k) => listing.folders.includes(k)) && (
               <>
@@ -1011,6 +1338,32 @@ export default function ObjectBrowser() {
               </>
             )}
           </p>
+          <ul className="mb-4 max-h-48 overflow-y-auto rounded-md border border-black/8 dark:border-white/8 bg-black/3 dark:bg-white/4 text-xs">
+            {modal.keys.slice(0, 100).map((k) => {
+              const isFolder = listing.folders.includes(k);
+              const display = isFolder
+                ? k.slice(prefix.length).replace(/\/$/, "") + "/"
+                : k.slice(prefix.length);
+              return (
+                <li
+                  key={k}
+                  className="flex items-center gap-2 px-2.5 py-1 border-b last:border-b-0 border-black/5 dark:border-white/5"
+                >
+                  {isFolder ? (
+                    <Folder className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                  ) : (
+                    <FileIcon className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                  )}
+                  <span className="truncate font-mono">{display}</span>
+                </li>
+              );
+            })}
+            {modal.keys.length > 100 && (
+              <li className="px-2.5 py-1 text-neutral-500 italic">
+                …and {modal.keys.length - 100} more
+              </li>
+            )}
+          </ul>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModal(null)}>
               Cancel
@@ -1027,21 +1380,37 @@ export default function ObjectBrowser() {
 
       {/* ── Rename Modal ── */}
       {modal?.type === "rename" && (
-        <Modal open onClose={() => setModal(null)} title="Rename">
+        <Modal
+          open
+          onClose={() => setModal(null)}
+          title={modal.isFolder ? "Rename folder" : "Rename"}
+        >
           <div className="flex flex-col gap-4">
             <Input
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleRename(modal.key, renameValue);
+                if (e.key === "Enter")
+                  handleRename(modal.key, renameValue, modal.isFolder);
               }}
               autoFocus
             />
+            {modal.isFolder && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                All objects under this folder will be copied to the new prefix
+                and the originals deleted. This may take a moment for large
+                folders.
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setModal(null)}>
                 Cancel
               </Button>
-              <Button onClick={() => handleRename(modal.key, renameValue)}>
+              <Button
+                onClick={() =>
+                  handleRename(modal.key, renameValue, modal.isFolder)
+                }
+              >
                 Rename
               </Button>
             </div>
@@ -1085,7 +1454,31 @@ export default function ObjectBrowser() {
           connectionId={connId}
           bucket={bucket}
           objectKey={infoKey ?? ""}
+          mode="info"
+        />
+      )}
+
+      {/* ── Edit Headers Modal ── */}
+      {connId && bucket && (
+        <ObjectInfoModal
+          open={editHeadersKey !== null}
+          onClose={() => setEditHeadersKey(null)}
+          connectionId={connId}
+          bucket={bucket}
+          objectKey={editHeadersKey ?? ""}
+          mode="edit"
           onSaved={() => fetchListing()}
+        />
+      )}
+
+      {/* ── File Preview Modal ── */}
+      {connId && bucket && previewKey && (
+        <FilePreviewModal
+          open
+          onClose={() => setPreviewKey(null)}
+          connectionId={connId}
+          bucket={bucket}
+          objectKey={previewKey}
         />
       )}
 

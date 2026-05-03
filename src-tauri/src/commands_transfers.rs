@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc;
 
 use crate::error::{Error, Result};
 use crate::s3::{ConnectionLike, S3Client};
@@ -95,11 +96,45 @@ pub async fn upload_file_tracked(
 
     emit(&app, &transfer_id, "running", 0, total, None);
 
-    run_tracked(app.clone(), &state, transfer_id.clone(), total, move |_app, _id| async move {
-        client.upload_file(&bucket, &key, &local_path).await?;
-        Ok(total)
-    })
-    .await
+    // Bridge sync progress callbacks from the upload task into async events.
+    // The `mpsc` channel decouples the upload's blocking-style callback from
+    // the Tauri event emitter, which needs `&AppHandle`.
+    let (tx, mut rx) = mpsc::unbounded_channel::<u64>();
+    let app_for_progress = app.clone();
+    let id_for_progress = transfer_id.clone();
+    let progress_task = tokio::spawn(async move {
+        while let Some(loaded) = rx.recv().await {
+            emit(
+                &app_for_progress,
+                &id_for_progress,
+                "running",
+                loaded,
+                loaded.max(total),
+                None,
+            );
+        }
+    });
+
+    let res = run_tracked(
+        app.clone(),
+        &state,
+        transfer_id.clone(),
+        total,
+        move |_app, _id| async move {
+            let uploaded = client
+                .upload_file_with_progress(&bucket, &key, &local_path, |loaded| {
+                    let _ = tx.send(loaded);
+                })
+                .await?;
+            Ok(uploaded)
+        },
+    )
+    .await;
+
+    // Stop the bridge once the task is done.
+    progress_task.abort();
+    let _ = progress_task.await;
+    res
 }
 
 #[tauri::command]
@@ -208,9 +243,20 @@ pub async fn copy_object_tracked(
         file.flush().await?;
         drop(file);
 
-        // Upload to destination.
-        emit(&app, &id, "running", total / 2, total.max(loaded), None);
-        let upload_res = dst_client.upload_file(&dst_bucket, &dst_key, &tmp_str).await;
+        // Upload to destination using multipart progress.
+        let half = total / 2;
+        emit(&app, &id, "running", half, total.max(loaded), None);
+        let upload_res = dst_client
+            .upload_file_with_progress(&dst_bucket, &dst_key, &tmp_str, |up_loaded| {
+                // Second half of progress = upload phase.
+                let scaled = if total > 0 {
+                    half + (up_loaded.min(total) / 2)
+                } else {
+                    half + up_loaded
+                };
+                emit(&app, &id, "running", scaled, total.max(loaded), None);
+            })
+            .await;
         let _ = tokio::fs::remove_file(&tmp_path).await;
         upload_res?;
         Ok(loaded)

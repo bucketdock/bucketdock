@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::error::Result;
-use crate::s3::{BucketInfo, ConnectionLike, ListPage, ObjectMetadata, S3Client};
+use crate::s3::{BucketInfo, ConnectionLike, ListPage, ObjectInfo, ObjectMetadata, ObjectPreview, S3Client};
 use crate::state::AppState;
 
 #[tauri::command]
@@ -194,4 +194,42 @@ pub async fn update_object_metadata(
     let conn = state.get_connection(&connection_id).await?;
     let client = S3Client::from_connection(&ConnectionLike::from(&conn)).await?;
     client.update_object_metadata(&bucket, &key, &metadata).await
+}
+
+#[tauri::command]
+pub async fn rename_prefix(
+    connection_id: String,
+    bucket: String,
+    old_prefix: String,
+    new_prefix: String,
+    state: State<'_, AppState>,
+) -> Result<u64> {
+    let conn = state.get_connection(&connection_id).await?;
+    let client = S3Client::from_connection(&ConnectionLike::from(&conn)).await?;
+    client.rename_prefix(&bucket, &old_prefix, &new_prefix).await
+}
+
+#[tauri::command]
+pub async fn list_keys_under(
+    connection_id: String,
+    bucket: String,
+    prefix: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ObjectInfo>> {
+    let conn = state.get_connection(&connection_id).await?;
+    let client = S3Client::from_connection(&ConnectionLike::from(&conn)).await?;
+    client.list_keys_under(&bucket, &prefix).await
+}
+
+#[tauri::command]
+pub async fn read_object_preview(
+    connection_id: String,
+    bucket: String,
+    key: String,
+    max_bytes: u64,
+    state: State<'_, AppState>,
+) -> Result<ObjectPreview> {
+    let conn = state.get_connection(&connection_id).await?;
+    let client = S3Client::from_connection(&ConnectionLike::from(&conn)).await?;
+    client.read_object_preview(&bucket, &key, max_bytes).await
 }

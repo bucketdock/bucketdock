@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useAppStore } from "@/store/app-store";
 import { useTransfersStore } from "@/store/transfers-store";
-import { listBuckets, type BucketInfo } from "@/lib/tauri";
+import { listBuckets, listKeysUnder, type BucketInfo } from "@/lib/tauri";
 
 export interface CopyToModalProps {
   open: boolean;
@@ -17,14 +17,15 @@ export interface CopyToModalProps {
   /** Source connection */
   srcConnectionId: string;
   srcBucket: string;
-  /** Object keys to copy. Folders (keys ending in '/') are not supported in this minimal flow. */
+  /** Object keys to copy. Folders (keys ending in '/') are expanded recursively. */
   keys: string[];
 }
 
 /**
- * Minimal bucket-to-bucket copy modal: lets the user choose a destination
- * connection and bucket, then enqueues one transfer per selected key.
- * Folders are skipped (the existing folder upload/download path is preserved).
+ * Bucket-to-bucket copy modal: lets the user choose a destination connection
+ * and bucket, then enqueues one transfer per file. Folders are expanded by
+ * listing every key under them and re-creating the relative layout at the
+ * destination.
  */
 export default function CopyToModal({
   open,
@@ -41,6 +42,7 @@ export default function CopyToModal({
   const [dstBucket, setDstBucket] = React.useState<string>(srcBucket);
   const [dstPrefix, setDstPrefix] = React.useState<string>("");
   const [loadingBuckets, setLoadingBuckets] = React.useState(false);
+  const [expanding, setExpanding] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -77,46 +79,104 @@ export default function CopyToModal({
     };
   }, [open, dstConnId, dstBucket]);
 
-  function handleCopy() {
-    const fileKeys = keys.filter((k) => !k.endsWith("/"));
-    if (fileKeys.length === 0) {
-      toast.error("Folder copy is not supported. Select files instead.");
-      return;
-    }
+  async function handleCopy() {
     if (!dstConnId || !dstBucket) {
       toast.error("Pick a destination bucket");
       return;
     }
     const prefix =
       dstPrefix.endsWith("/") || dstPrefix === "" ? dstPrefix : dstPrefix + "/";
-    for (const key of fileKeys) {
-      const name = key.split("/").filter(Boolean).pop() ?? key;
-      const dstKey = prefix + name;
-      enqueueCopy({
-        srcConnectionId,
-        srcBucket,
-        srcKey: key,
-        dstConnectionId: dstConnId,
-        dstBucket,
-        dstKey,
-        name,
-        subtitle: `${srcBucket}/${key}  →  ${dstBucket}/${dstKey}`,
-      });
+
+    const fileKeys = keys.filter((k) => !k.endsWith("/"));
+    const folderKeys = keys.filter((k) => k.endsWith("/"));
+
+    setExpanding(true);
+    let queued = 0;
+    try {
+      // Files: copy as-is, preserving only the basename under the destination prefix.
+      for (const key of fileKeys) {
+        const name = key.split("/").filter(Boolean).pop() ?? key;
+        const dstKey = prefix + name;
+        enqueueCopy({
+          srcConnectionId,
+          srcBucket,
+          srcKey: key,
+          dstConnectionId: dstConnId,
+          dstBucket,
+          dstKey,
+          name,
+          subtitle: `${srcBucket}/${key}  →  ${dstBucket}/${dstKey}`,
+        });
+        queued++;
+      }
+
+      // Folders: list every key under each folder and rebuild the relative
+      // layout under the destination prefix.
+      for (const folderKey of folderKeys) {
+        const objects = await listKeysUnder(
+          srcConnectionId,
+          srcBucket,
+          folderKey,
+        );
+        // Use the folder's basename as a top-level directory at the destination
+        // so multiple selected folders don't collide.
+        const folderName =
+          folderKey.replace(/\/$/, "").split("/").pop() ?? "folder";
+        for (const obj of objects) {
+          if (obj.key.endsWith("/")) continue;
+          const rel = obj.key.slice(folderKey.length);
+          if (!rel) continue;
+          const dstKey = `${prefix}${folderName}/${rel}`;
+          const name = rel.split("/").pop() ?? rel;
+          enqueueCopy({
+            srcConnectionId,
+            srcBucket,
+            srcKey: obj.key,
+            dstConnectionId: dstConnId,
+            dstBucket,
+            dstKey,
+            name,
+            subtitle: `${srcBucket}/${obj.key}  →  ${dstBucket}/${dstKey}`,
+          });
+          queued++;
+        }
+      }
+    } catch (err) {
+      toast.error(
+        `Failed to expand folder: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      setExpanding(false);
+      return;
     }
-    toast.success(`Queued ${fileKeys.length} copy transfer(s)`);
+    setExpanding(false);
+    if (queued === 0) {
+      toast.error("Nothing to copy");
+      return;
+    }
+    toast.success(`Queued ${queued} copy transfer(s)`);
     onClose();
   }
 
   const fileCount = keys.filter((k) => !k.endsWith("/")).length;
-  const skipped = keys.length - fileCount;
+  const folderCount = keys.length - fileCount;
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={`Copy ${fileCount} file${fileCount !== 1 ? "s" : ""} to…`}
+      title={`Copy ${keys.length} item${keys.length !== 1 ? "s" : ""} to…`}
     >
       <div className="flex flex-col gap-3">
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          {fileCount} file{fileCount === 1 ? "" : "s"}
+          {folderCount > 0 && (
+            <>
+              {", "}
+              {folderCount} folder{folderCount === 1 ? "" : "s"} (contents
+              expanded)
+            </>
+          )}
+        </p>
         <div>
           <Label>Destination connection</Label>
           <Select
@@ -156,18 +216,15 @@ export default function CopyToModal({
             onChange={(e) => setDstPrefix(e.target.value)}
           />
         </div>
-        {skipped > 0 && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            {skipped} folder selection(s) will be skipped — folder copy is not
-            yet supported.
-          </p>
-        )}
         <div className="flex justify-end gap-2 mt-2">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={expanding}>
             Cancel
           </Button>
-          <Button onClick={handleCopy} disabled={fileCount === 0 || !dstBucket}>
-            Copy
+          <Button
+            onClick={handleCopy}
+            disabled={keys.length === 0 || !dstBucket || expanding}
+          >
+            {expanding ? "Queueing…" : "Copy"}
           </Button>
         </div>
       </div>

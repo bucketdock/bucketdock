@@ -42,7 +42,9 @@ For Next.js-specific behavior, APIs, config, and conventions:
 - `src/components/connections-sidebar.tsx`: saved connection list and bucket loading
 - `src/components/object-browser.tsx`: main browser UI and object actions
 - `src/components/transfer-queue.tsx`: bottom-right transfer dock (progress, cancel, retry)
-- `src/components/copy-to-modal.tsx`: bucket-to-bucket copy destination picker
+- `src/components/copy-to-modal.tsx`: bucket-to-bucket copy destination picker (files and folders)
+- `src/components/object-info-modal.tsx`: object info viewer + headers/metadata editor (`mode="info" | "edit"`)
+- `src/components/file-preview-modal.tsx`: inline preview for images / audio / video / PDF / text
 - `src/store/transfers-store.ts`: transfer queue state, dispatches tracked Tauri commands
 - `src/lib/tauri.ts`: frontend Tauri command bridge
 - `src-tauri/src/commands_conns.rs`: add/update/delete/test connection commands
@@ -59,9 +61,9 @@ For Next.js-specific behavior, APIs, config, and conventions:
 
 ## Guardrails
 
-- Do not claim unsupported features are implemented. Search, tags, and folder rename are not shipped.
-- Folder copy across buckets is not implemented; only single-file copy through `copy_object_tracked`.
-- Upload progress is currently start/complete only — do not claim per-byte upload progress.
+- Object tags, Finder reveal, and bucket policy inspection are not implemented. Do not claim them.
+- Folder rename / move and cross-bucket folder copy are implemented as recursive copy-and-delete (`rename_prefix` and bulk `copy_object_tracked`); they are not atomic server-side operations.
+- Multipart uploads emit per-part progress; single-PutObject uploads still emit only start / complete.
 - If a saved connection behaves differently from a form test, inspect keychain persistence before changing S3 logic.
 - Prefer small, local changes around the owning abstraction instead of broad rewrites.
 <!-- END:nextjs-agent-rules -->

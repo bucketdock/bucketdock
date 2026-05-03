@@ -103,8 +103,9 @@ Buckets:  optional list</code></pre>
           <h2 id="transfers">Transfer queue</h2>
           <p>
             Every upload, download and bucket-to-bucket copy is tracked in the
-            dock at the bottom-right of the window. Each row shows progress for
-            downloads and copies, and a status indicator for uploads. You can:
+            dock at the bottom-right of the window. Each row shows live progress
+            (multipart uploads emit per-part progress) and a status indicator.
+            You can:
           </p>
           <ul>
             <li><strong>Cancel</strong> a running transfer</li>
@@ -114,15 +115,47 @@ Buckets:  optional list</code></pre>
             </li>
           </ul>
 
+          <h2 id="browse">Browse, filter and preview</h2>
+          <ul>
+            <li>
+              The toolbar has an inline <strong>filter</strong> box that narrows
+              the current listing by case-insensitive substring.
+            </li>
+            <li>
+              Click any column header to <strong>sort</strong> by Name, Type,
+              Storage Class, Size or Modified. Click again to reverse the
+              direction.
+            </li>
+            <li>
+              The trailing <code>…</code> button on each row opens the same menu
+              as a right-click.
+            </li>
+            <li>
+              Double-click a file (or pick <strong>Preview</strong> from the
+              menu) to open an inline preview for images, audio, video, PDFs and
+              text files.
+            </li>
+            <li>
+              Pick <strong>Get Info</strong> to inspect headers and user
+              metadata read-only, or <strong>Edit Headers…</strong> to change
+              Content-Type, Cache-Control, custom user metadata and more.
+            </li>
+            <li>
+              Renaming a folder or copying a folder between buckets is
+              implemented as a recursive copy of every object below the prefix,
+              followed by a delete of the originals on rename.
+            </li>
+          </ul>
+
           <h2 id="copy">Copy between buckets</h2>
           <p>
-            Right-click one or more files and choose <strong>Copy to…</strong>.
-            Pick a destination connection (it can be a different provider), a
-            bucket and an optional prefix. Each file becomes a tracked copy
-            transfer that streams through the desktop and reports progress as it
-            goes.
+            Right-click one or more files <em>or folders</em> and choose
+            <strong>Copy to…</strong>. Pick a destination connection (it can be
+            a different provider), a bucket and an optional prefix. Each file
+            becomes a tracked copy transfer that streams through the desktop and
+            reports progress as it goes. Folders are expanded recursively and
+            every object below the prefix is queued.
           </p>
-          <p><em>Folder copy is not yet supported — pick files instead.</em></p>
 
           <h2 id="shortcuts">Keyboard shortcuts</h2>
           <ul>
@@ -160,12 +193,8 @@ pnpm tauri build</code></pre>
           <h2 id="not-yet">Not yet implemented</h2>
           <ul>
             <li>Object tags</li>
-            <li>Search and filter UI</li>
-            <li>Folder rename, move, or bucket-to-bucket folder copy</li>
-            <li>
-              Per-part upload progress (uploads currently report only start and
-              complete)
-            </li>
+            <li>Finder reveal</li>
+            <li>Bucket policy inspection</li>
           </ul>
         </div>
       </section>
