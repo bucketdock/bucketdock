@@ -127,6 +127,19 @@ Buckets:  optional list</code></pre>
               direction.
             </li>
             <li>
+              The Type column shows the
+              <strong>default Content-Type S3 would assign</strong> when no
+              explicit type is set (<code>application/octet-stream</code> for
+              files, <code>—</code> for folders). The real
+              <code>Content-Type</code>
+              reported by the server is shown in the Get Info modal —
+              <code>list_objects_v2</code> doesn’t include it.
+            </li>
+            <li>
+              Selecting a connection without a bucket shows a Finder-style
+              <strong>bucket grid</strong> in the right pane.
+            </li>
+            <li>
               The trailing <code>…</code> button on each row opens the same menu
               as a right-click.
             </li>
@@ -145,7 +158,32 @@ Buckets:  optional list</code></pre>
               implemented as a recursive copy of every object below the prefix,
               followed by a delete of the originals on rename.
             </li>
+            <li>
+              <strong>Renaming</strong> also moves an object inside the same
+              bucket — type a path with slashes (e.g.
+              <code>archive/2024/photo.jpg</code>) and the file or folder is
+              copied to that prefix and the original removed.
+            </li>
           </ul>
+
+          <h2 id="menu">macOS application menu</h2>
+          <p>
+            BucketDock installs a native menu bar with the standard macOS
+            arrangement — <strong>File</strong> (New Connection, New Folder,
+            Upload Files…, Upload Folder…, Refresh, Get Info),
+            <strong>Edit</strong> (with native Cut / Copy / Paste / Find),
+            <strong>View</strong>, <strong>Window</strong>, and
+            <strong>Help</strong> with links to
+            <a href="https://bucketdock.com">bucketdock.com</a>, this
+            documentation page,
+            <a href="https://github.com/bucketdock/bucketdock"
+              >the GitHub repository</a
+            >
+            and
+            <a href="https://github.com/bucketdock/bucketdock/issues"
+              >the issue tracker</a
+            >.
+          </p>
 
           <h2 id="copy">Copy between buckets</h2>
           <p>
@@ -175,9 +213,12 @@ Buckets:  optional list</code></pre>
           <pre><code>~/Library/Application Support/BucketDock/connections.json</code></pre>
           <p>
             Secret access keys are stored separately in the macOS Keychain under
-            the service name <code>com.bucketdock.app</code>. If a connection
-            was created before native Keychain persistence was enabled, edit the
-            connection, paste the secret key again, and save it once.
+            the service name <code>com.bucketdock.app</code>. As of the latest
+            build all secrets live in a
+            <strong>single bundled entry</strong> (account
+            <code>bucketdock://secrets-v2</code>) so macOS prompts you once per
+            session instead of once per connection. Legacy per-connection
+            entries are migrated forward on first launch and removed.
           </p>
 
           <h2 id="build-from-source">Build from source</h2>

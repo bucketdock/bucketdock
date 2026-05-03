@@ -918,3 +918,66 @@ impl S3Client {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_encode_preserves_slash() {
+        assert_eq!(percent_encode_key("a/b/c"), "a/b/c");
+    }
+
+    #[test]
+    fn percent_encode_escapes_unreserved() {
+        // Spaces must become %20, not '+', and "?" must be escaped so the
+        // copy-source header is parsed as a single key, not a query.
+        assert_eq!(percent_encode_key("foo bar"), "foo%20bar");
+        assert_eq!(percent_encode_key("a?b#c"), "a%3Fb%23c");
+        assert_eq!(percent_encode_key("ümlaut"), "%C3%BCmlaut");
+    }
+
+    #[test]
+    fn percent_encode_keeps_unreserved_chars() {
+        // Per RFC 3986: A-Z a-z 0-9 - _ . ~ are kept verbatim.
+        assert_eq!(
+            percent_encode_key("Hello-World_2025.tar~bak"),
+            "Hello-World_2025.tar~bak"
+        );
+    }
+
+    /// Mirrors the validation used by `rename_prefix` so we can exercise the
+    /// edge cases without standing up an S3 endpoint.
+    fn validate_rename_prefix(old_prefix: &str, new_prefix: &str) -> Result<()> {
+        if !old_prefix.ends_with('/') || !new_prefix.ends_with('/') {
+            return Err(Error::Other("folder prefixes must end with '/'".into()));
+        }
+        if old_prefix == new_prefix {
+            return Ok(());
+        }
+        if new_prefix.starts_with(old_prefix) {
+            return Err(Error::Other("cannot move a folder into itself".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rename_prefix_requires_trailing_slash() {
+        assert!(validate_rename_prefix("a", "b/").is_err());
+        assert!(validate_rename_prefix("a/", "b").is_err());
+        validate_rename_prefix("a/", "b/").unwrap();
+    }
+
+    #[test]
+    fn rename_prefix_rejects_self_nest() {
+        // Moving "a/" into "a/b/" would create infinite recursion.
+        let err = validate_rename_prefix("a/", "a/b/").unwrap_err();
+        assert!(err.to_string().contains("itself"));
+    }
+
+    #[test]
+    fn rename_prefix_allows_sibling_move() {
+        validate_rename_prefix("a/", "b/").unwrap();
+        validate_rename_prefix("parent/a/", "parent/b/").unwrap();
+    }
+}

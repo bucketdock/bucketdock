@@ -16,11 +16,7 @@ pub async fn list_buckets(
     // (e.g. a Cloudflare R2 token limited to specific buckets) which are not
     // allowed to call the account-wide ListBuckets API.
     if let Some(filter) = conn.bucket_filter.as_ref() {
-        let explicit: Vec<String> = filter
-            .split(|c: char| c == ',' || c == ' ' || c == '\n' || c == ';')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
+        let explicit = crate::connections::parse_bucket_filter(filter);
         if !explicit.is_empty() {
             return Ok(explicit
                 .into_iter()

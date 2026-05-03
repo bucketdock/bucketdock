@@ -41,7 +41,9 @@ import {
 } from "@/lib/tauri";
 import { useAppStore } from "@/store/app-store";
 import { useTransfersStore } from "@/store/transfers-store";
+import { fileExtension, s3DefaultContentType } from "@/lib/mime";
 import CopyToModal from "@/components/copy-to-modal";
+import BucketsPane from "@/components/buckets-pane";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -68,13 +70,6 @@ function formatSize(bytes: number): string {
 
 function fileBasename(path: string): string {
   return path.split("/").filter(Boolean).pop() ?? path;
-}
-
-function fileTypeLabel(key: string): string {
-  const base = fileBasename(key);
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0 || dot === base.length - 1) return "File";
-  return base.slice(dot + 1).toUpperCase();
 }
 
 function shortDate(d: Date): string {
@@ -273,7 +268,7 @@ export default function ObjectBrowser() {
           return (at - bt) * dir;
         }
         case "type":
-          return fileTypeLabel(a.key).localeCompare(fileTypeLabel(b.key)) * dir;
+          return fileExtension(a.key).localeCompare(fileExtension(b.key)) * dir;
         case "storage":
           return (
             (a.storage_class ?? "").localeCompare(b.storage_class ?? "") * dir
@@ -461,6 +456,85 @@ export default function ObjectBrowser() {
       toast.error(`Upload failed: ${err}`);
     }
   };
+
+  // ── Native menu actions ────────────────────────────────────────────────────
+  // Keep refs to the latest handlers so the listener doesn't churn on every
+  // render. The Rust side emits "menu://action" with the menu item id.
+  const menuHandlersRef = React.useRef<{
+    refresh: () => void;
+    upload: () => void;
+    uploadFolder: () => void;
+    newFolder: () => void;
+    getInfo: () => void;
+  }>({
+    refresh: () => {},
+    upload: () => {},
+    uploadFolder: () => {},
+    newFolder: () => {},
+    getInfo: () => {},
+  });
+  React.useEffect(() => {
+    menuHandlersRef.current = {
+      refresh: fetchListing,
+      upload: handleUpload,
+      uploadFolder: handleUploadFolder,
+      newFolder: () => {
+        setNewFolderValue("");
+        setModal({ type: "newFolder" });
+      },
+      getInfo: () => {
+        if (selection.size === 1) {
+          const k = [...selection][0];
+          if (!k.endsWith("/")) setInfoKey(k);
+        }
+      },
+    };
+  });
+
+  React.useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | null = null;
+    let mounted = true;
+    (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      if (!mounted) return;
+      unlisten = await listen<string>("menu://action", (event) => {
+        const id = event.payload;
+        const h = menuHandlersRef.current;
+        switch (id) {
+          case "file:refresh":
+            h.refresh();
+            break;
+          case "file:upload_files":
+            h.upload();
+            break;
+          case "file:upload_folder":
+            h.uploadFolder();
+            break;
+          case "file:new_folder":
+            h.newFolder();
+            break;
+          case "file:get_info":
+            h.getInfo();
+            break;
+          // file:new_connection handled by ConnectionsSidebar
+          // edit:find handled here by focusing the search input
+          case "edit:find": {
+            const el = document.querySelector<HTMLInputElement>(
+              'input[aria-label="Filter"]',
+            );
+            el?.focus();
+            el?.select();
+            break;
+          }
+        }
+      });
+    })();
+    return () => {
+      mounted = false;
+      unlisten?.();
+    };
+  }, []);
 
   const handleDownloadSingle = async (key: string) => {
     if (!connId || !bucket) return;
@@ -752,14 +826,7 @@ export default function ObjectBrowser() {
   }
 
   if (!bucket) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <EmptyState
-          title="Select a bucket"
-          description="Pick a bucket from the sidebar to browse its objects."
-        />
-      </div>
-    );
+    return <BucketsPane connectionId={connId} />;
   }
 
   // ── Breadcrumbs ────────────────────────────────────────────────────────────
@@ -789,7 +856,7 @@ export default function ObjectBrowser() {
         an explicit z on the toolbar the Upload dropdown would be painted
         beneath the table head.
       */}
-      <div className="relative z-20 flex items-center justify-between px-4 py-2 border-b border-black/8 dark:border-white/8 shrink-0 gap-3 min-h-[44px]">
+      <div className="relative z-20 flex items-center justify-between px-4 py-2 border-b border-black/8 dark:border-white/8 shrink-0 gap-3 min-h-[44px] flex-wrap">
         {/* Breadcrumbs */}
         <nav
           className="flex items-center gap-0.5 min-w-0 overflow-hidden text-sm"
@@ -894,27 +961,11 @@ export default function ObjectBrowser() {
               Headers
             </Button>
           )}
-          {hasSelection && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setModal({ type: "delete", keys: [...selection] })}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={fetchListing}
-            aria-label="Refresh"
-            title="Refresh"
-          >
-            <RotateCw
-              className={cn("w-3.5 h-3.5", listing.loading && "animate-spin")}
-            />
-          </Button>
+          {/*
+            Delete is intentionally not in the top toolbar — it lives in the
+            per-row "…" menu and the right-click context menu so users can't
+            wipe a multi-selection by reflex. Refresh moved to the very end.
+          */}
           <Button
             variant="ghost"
             size="sm"
@@ -959,6 +1010,17 @@ export default function ObjectBrowser() {
               </div>
             )}
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={fetchListing}
+            aria-label="Refresh"
+            title="Refresh"
+          >
+            <RotateCw
+              className={cn("w-3.5 h-3.5", listing.loading && "animate-spin")}
+            />
+          </Button>
         </div>
       </div>
 
@@ -1220,7 +1282,7 @@ export default function ObjectBrowser() {
                 const modDate = file.last_modified
                   ? new Date(file.last_modified)
                   : null;
-                const typeLabel = fileTypeLabel(file.key);
+                const typeLabel = s3DefaultContentType(file.key);
                 return (
                   <tr
                     key={file.key}
@@ -1383,7 +1445,7 @@ export default function ObjectBrowser() {
         <Modal
           open
           onClose={() => setModal(null)}
-          title={modal.isFolder ? "Rename folder" : "Rename"}
+          title={modal.isFolder ? "Rename or move folder" : "Rename or move"}
         >
           <div className="flex flex-col gap-4">
             <Input
@@ -1395,13 +1457,11 @@ export default function ObjectBrowser() {
               }}
               autoFocus
             />
-            {modal.isFolder && (
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                All objects under this folder will be copied to the new prefix
-                and the originals deleted. This may take a moment for large
-                folders.
-              </p>
-            )}
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              {modal.isFolder
+                ? "All objects under this folder will be copied to the new prefix and the originals deleted. This may take a moment for large folders. Use a slash to move into a subfolder, e.g. archive/2024."
+                : "Use a slash to move the file into a subfolder, e.g. images/photo.jpg."}
+            </p>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setModal(null)}>
                 Cancel

@@ -39,6 +39,12 @@ jobs:
         # Continue on error: existing repo has unrelated react-hooks warnings.
         run: pnpm exec eslint . || true
 
+      - name: Vitest (frontend unit tests)
+        # Critical-path tests for the Tauri IPC bridge, mime helpers, app
+        # store navigation, copy-to safety guard and the secret-leak
+        # invariants. These are required to pass before any release builds.
+        run: pnpm test
+
       - name: TypeScript / Next build
         run: pnpm build
 
@@ -60,6 +66,6 @@ jobs:
         run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
 
       - name: cargo test
-        # No tests yet — but if/when they land this guards them. `--no-fail-fast`
-        # so a missing-target situation does not break the smoke job.
-        run: cargo test --manifest-path src-tauri/Cargo.toml --no-fail-fast || true
+        # Backend unit tests (connections + S3 helpers + key validation).
+        # These are required to pass before any release workflow runs.
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-fail-fast

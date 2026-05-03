@@ -50,8 +50,10 @@ Official signed and notarized builds are planned later.
 - Empty states and loading skeletons
 - Inline filter box in the toolbar (case-insensitive substring match)
 - Sortable columns: Name, Type, Storage Class, Size, Modified
+- Type column shows the default Content-Type S3 would assign when none is set (`application/octet-stream` for files, `—` for folders); the real Content-Type returned by the server is shown in Get Info
 - Per-row actions menu (…) for keyboard- and mouse-friendly access
 - Modified column shows a short relative time with a full timestamp on hover
+- Right-pane Finder-style bucket grid when a connection is selected without a bucket
 
 ### Object Operations
 
@@ -62,7 +64,7 @@ Official signed and notarized builds are planned later.
 - Download multiple selected items
 - Download folders recursively
 - Create folder placeholder objects
-- Rename objects
+- Rename objects (use a slash to move into a sub-prefix in the same bucket, e.g. `images/photo.jpg`)
 - Rename / move folders (copy-and-delete across an entire prefix)
 - Delete single objects
 - Delete multiple selected objects
@@ -96,11 +98,14 @@ Official signed and notarized builds are planned later.
 ### Desktop Behavior
 
 - Native macOS window via Tauri
+- Native macOS application menu (File, Edit, View, Window, Help) with standard ⌘ accelerators and links to website / docs / GitHub
+- Window draggable from the titlebar zone
 - Native file and directory pickers
 - macOS Keychain secret storage
 - Light and dark appearance support
 - Persistent sidebar width
 - Persistent selected connection, bucket, and prefix state
+- Friendly error messages on connection test / save (recognises `AccessDenied`, `SignatureDoesNotMatch`, `InvalidAccessKeyId`, `NoSuchBucket`, network failures)
 
 ## Not Implemented Yet
 
@@ -267,6 +272,21 @@ src-tauri/target/release/bundle/
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+### Tests
+
+The project ships two suites that both run in CI before any release build:
+
+```bash
+# Frontend unit tests (Vitest + jsdom): IPC bridge, app store, copy-to
+# self-overwrite guard, MIME helper, secret-leak invariants.
+pnpm test
+
+# Backend unit tests (Rust): connection metadata round-trip, validation,
+# bucket-filter parsing, S3 key percent-encoding, rename_prefix edges,
+# keychain service / bundle account constants.
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Provider Setup

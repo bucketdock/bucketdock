@@ -1,21 +1,39 @@
-'use client';
+"use client";
 
-import * as React from 'react';
-import { Plus, Cloud, Zap, Server, HardDrive, Edit2, Trash2, Wifi, MoreHorizontal } from 'lucide-react';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ContextMenu, type ContextMenuItem } from '@/components/ui/context-menu';
-import { useAppStore } from '@/store/app-store';
-import { isTauri, listBuckets, listObjects, type Connection } from '@/lib/tauri';
-import { cn } from '@/lib/cn';
-import ConnectionFormModal from './connection-form-modal';
-import DeleteConnectionConfirm from './delete-connection-confirm';
+import * as React from "react";
+import {
+  Plus,
+  Cloud,
+  Zap,
+  Server,
+  HardDrive,
+  Edit2,
+  Trash2,
+  Wifi,
+  MoreHorizontal,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import {
+  ContextMenu,
+  type ContextMenuItem,
+} from "@/components/ui/context-menu";
+import { useAppStore } from "@/store/app-store";
+import {
+  isTauri,
+  listBuckets,
+  listObjects,
+  type Connection,
+} from "@/lib/tauri";
+import { cn } from "@/lib/cn";
+import ConnectionFormModal from "./connection-form-modal";
+import DeleteConnectionConfirm from "./delete-connection-confirm";
 
 function ProviderIcon({ provider }: { provider: string }) {
-  if (provider === 'aws') return <Cloud className="w-3.5 h-3.5 shrink-0" />;
-  if (provider === 'r2') return <Zap className="w-3.5 h-3.5 shrink-0" />;
+  if (provider === "aws") return <Cloud className="w-3.5 h-3.5 shrink-0" />;
+  if (provider === "r2") return <Zap className="w-3.5 h-3.5 shrink-0" />;
   return <Server className="w-3.5 h-3.5 shrink-0" />;
 }
 
@@ -39,6 +57,24 @@ export default function ConnectionsSidebar() {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
+  // Listen for the native macOS menu's "New Connection" action.
+  React.useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | null = null;
+    let alive = true;
+    (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      if (!alive) return;
+      unlisten = await listen<string>("menu://action", (event) => {
+        if (event.payload === "file:new_connection") setAddOpen(true);
+      });
+    })();
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, []);
+
   React.useEffect(() => {
     if (!selectedConnectionId) return;
     if (useAppStore.getState().buckets[selectedConnectionId]) return;
@@ -46,7 +82,11 @@ export default function ConnectionsSidebar() {
 
     const id = selectedConnectionId;
     fetchingRef.current.add(id);
-    setLoadingIds((prev) => { const s = new Set(prev); s.add(id); return s; });
+    setLoadingIds((prev) => {
+      const s = new Set(prev);
+      s.add(id);
+      return s;
+    });
 
     listBuckets(id)
       .then((list) => {
@@ -54,15 +94,22 @@ export default function ConnectionsSidebar() {
         // Auto-select the bucket if there's exactly one
         if (list.length === 1 && !useAppStore.getState().selectedBucket) {
           useAppStore.getState().selectBucket(list[0].name);
-          useAppStore.getState().setPrefix('');
+          useAppStore.getState().setPrefix("");
         }
       })
-      .catch((err: unknown) =>
-        toast.error(`Failed to load buckets: ${err instanceof Error ? err.message : String(err)}`)
-      )
+      .catch(() => {
+        // The right-hand BucketsPane renders the same error inline with
+        // remediation guidance, so we deliberately don't toast here —
+        // duplicating the message in two places is noisy and was confusing
+        // users (especially with scoped tokens that can't call ListBuckets).
+      })
       .finally(() => {
         fetchingRef.current.delete(id);
-        setLoadingIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+        setLoadingIds((prev) => {
+          const s = new Set(prev);
+          s.delete(id);
+          return s;
+        });
       });
   }, [selectedConnectionId]);
 
@@ -72,7 +119,7 @@ export default function ConnectionsSidebar() {
 
   function handleBucketClick(name: string) {
     useAppStore.getState().selectBucket(name);
-    useAppStore.getState().setPrefix('');
+    useAppStore.getState().setPrefix("");
   }
 
   function handleContextMenu(e: React.MouseEvent, conn: Connection) {
@@ -83,29 +130,33 @@ export default function ConnectionsSidebar() {
   const contextItems: ContextMenuItem[] = contextMenu
     ? [
         {
-          label: 'Edit',
+          label: "Edit",
           icon: <Edit2 className="w-3.5 h-3.5" />,
           onClick: () => setEditConn(contextMenu.conn),
         },
         {
-          label: 'Test',
+          label: "Test",
           icon: <Wifi className="w-3.5 h-3.5" />,
           onClick: () => {
             const id = contextMenu.conn.id;
             listBuckets(id)
               .then(async (list) => {
                 if (list.length > 0) {
-                  await listObjects(id, list[0].name, '');
+                  await listObjects(id, list[0].name, "");
                 }
-                toast.success(`Found ${list.length} bucket${list.length !== 1 ? 's' : ''}`);
+                toast.success(
+                  `Found ${list.length} bucket${list.length !== 1 ? "s" : ""}`,
+                );
               })
               .catch((err: unknown) =>
-                toast.error(`Test failed: ${err instanceof Error ? err.message : String(err)}`)
+                toast.error(
+                  `Test failed: ${err instanceof Error ? err.message : String(err)}`,
+                ),
               );
           },
         },
         {
-          label: 'Delete',
+          label: "Delete",
           icon: <Trash2 className="w-3.5 h-3.5" />,
           danger: true,
           onClick: () => setDeleteConn(contextMenu.conn),
@@ -127,7 +178,12 @@ export default function ConnectionsSidebar() {
         <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
           Connections
         </span>
-        <Button variant="ghost" size="icon" onClick={() => setAddOpen(true)} aria-label="Add connection">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setAddOpen(true)}
+          aria-label="Add connection"
+        >
           <Plus className="w-4 h-4" />
         </Button>
       </div>
@@ -152,9 +208,9 @@ export default function ConnectionsSidebar() {
                 {/* Connection row */}
                 <div
                   className={cn(
-                    'group relative w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer',
+                    "group relative w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer",
                     isSelected &&
-                      'bg-[#007AFF]/12 dark:bg-[#007AFF]/20 text-[#007AFF] font-medium',
+                      "bg-[#007AFF]/12 dark:bg-[#007AFF]/20 text-[#007AFF] font-medium",
                   )}
                   onClick={() => handleConnectionClick(conn.id)}
                   onContextMenu={(e) => handleContextMenu(e, conn)}
@@ -166,7 +222,9 @@ export default function ConnectionsSidebar() {
                     aria-label="Connection actions"
                     onClick={(e) => {
                       e.stopPropagation();
-                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      const rect = (
+                        e.currentTarget as HTMLElement
+                      ).getBoundingClientRect();
                       setContextMenu({
                         position: { x: rect.right, y: rect.bottom },
                         conn,
@@ -197,9 +255,9 @@ export default function ConnectionsSidebar() {
                           <button
                             key={b.name}
                             className={cn(
-                              'w-full flex items-center gap-2 px-3 py-1.5 pl-8 text-xs text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors',
+                              "w-full flex items-center gap-2 px-3 py-1.5 pl-8 text-xs text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors",
                               selectedBucket === b.name &&
-                                'bg-[#007AFF]/8 dark:bg-[#007AFF]/15 text-[#007AFF] font-medium',
+                                "bg-[#007AFF]/8 dark:bg-[#007AFF]/15 text-[#007AFF] font-medium",
                             )}
                             onClick={() => handleBucketClick(b.name)}
                           >
