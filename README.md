@@ -1,6 +1,6 @@
 # <img src="src-tauri/icons/32x32.png" alt="BucketDock icon" width="32" height="32" /> BucketDock
 
-**BucketDock — your S3 buckets, on your macOS desktop.**
+**BucketDock — your S3 browser, on your macOS desktop.**
 
 BucketDock is built for AWS S3, Cloudflare R2, and other S3-compatible providers when you want a desktop UI instead of the CLI or a browser dashboard.
 
