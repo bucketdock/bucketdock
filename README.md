@@ -1,14 +1,11 @@
 # <img src="src-tauri/icons/32x32.png" alt="BucketDock icon" width="32" height="32" /> BucketDock
 
-**Native macOS desktop browser for S3-compatible object storage.**
+**BucketDock — your S3 buckets, on your macOS desktop.**
 
 BucketDock is built for AWS S3, Cloudflare R2, and other S3-compatible providers when you want a desktop UI instead of the CLI or a browser dashboard.
 
-It combines:
-
-- a Next.js 16 + React 19 frontend
-- a Tauri 2 desktop shell
-- a Rust backend that performs all storage operations
+<img src="bucketdock-app-screenshot.png" alt="BucketDock application screenshot"/>
+<img src="bucketdock-files-copy-screenshot.png" alt="BucketDock application files/folders copy screenshot"/>
 
 ## macOS notice
 
