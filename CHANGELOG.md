@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [0.1.9](https://github.com/bucketdock/bucketdock/compare/v0.1.8...v0.1.9) (2026-05-03)
+
+
+### Bug Fixes
+
+* fix refresh file list after folder creation, simplify file coping ([efaaf2c](https://github.com/bucketdock/bucketdock/commit/efaaf2c9f9abc14f8e6bab355f324ff352761ab0))
+
 ## [0.1.8](https://github.com/bucketdock/bucketdock/compare/v0.1.7...v0.1.8) (2026-05-03)
 
 ### Features
