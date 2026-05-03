@@ -3,6 +3,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
+/// Classify a single S3 Contents entry against the listing prefix.
+///
+/// Returns `(is_folder_placeholder, skip)`:
+/// - `skip = true` for empty keys and for the listing-prefix placeholder
+///   itself (the empty 0-byte object many tools create to represent a folder
+///   that contains no other keys).
+/// - `is_folder_placeholder = true` when the key ends with `/` and isn't the
+///   listing prefix itself. R2 returns these in Contents instead of (or in
+///   addition to) CommonPrefixes; the listing code promotes them into the
+///   `folders` vector so they aren't rendered as oddly-named files.
+fn classify_listing_entry(key: &str, prefix: &str) -> (bool, bool) {
+    if key.is_empty() || key == prefix {
+        return (false, true);
+    }
+    (key.ends_with('/'), false)
+}
+
 /// Format an AWS SDK error including its source chain so the user sees the
 /// underlying cause (e.g. SignatureDoesNotMatch, NoSuchBucket, hyper/timeout)
 /// instead of the generic "service error".
@@ -222,27 +239,44 @@ impl S3Client {
             .await
             .map_err(fmt_sdk_err)?;
 
-        // Strip prefix from folder names so front-end sees relative names.
-        let folders = resp
+        // Folders: keep the FULL key (including the request prefix). The
+        // frontend uses `key.slice(prefix.length)` for display and treats
+        // these as full S3 keys (same convention as files), so returning
+        // the absolute prefix avoids name truncation when navigating into
+        // subfolders.
+        let mut folders: Vec<String> = resp
             .common_prefixes()
             .iter()
             .filter_map(|cp| cp.prefix())
-            .map(|p| p.strip_prefix(prefix).unwrap_or(p).to_string())
+            .map(|s| s.to_string())
             .collect();
 
-        // Files — keep full key; filter out the prefix placeholder itself.
-        let files = resp
-            .contents()
-            .iter()
-            .filter(|obj| obj.key().map(|k| k != prefix).unwrap_or(false))
-            .map(|obj| ObjectInfo {
-                key: obj.key().unwrap_or("").to_string(),
+        // Files — keep full key; filter out the listing prefix placeholder.
+        // Some S3 implementations (notably Cloudflare R2) return explicit
+        // "folder/" placeholder objects in Contents *instead of* (or in
+        // addition to) CommonPrefixes. Promote those into `folders` so the
+        // UI surfaces freshly-created folders consistently across providers.
+        let mut files = Vec::new();
+        for obj in resp.contents() {
+            let Some(key) = obj.key() else { continue };
+            let (is_folder, skip) = classify_listing_entry(key, prefix);
+            if skip {
+                continue;
+            }
+            if is_folder {
+                if !folders.iter().any(|f| f == key) {
+                    folders.push(key.to_string());
+                }
+                continue;
+            }
+            files.push(ObjectInfo {
+                key: key.to_string(),
                 size: obj.size().unwrap_or(0),
                 last_modified: obj.last_modified().and_then(aws_dt_to_chrono),
                 etag: obj.e_tag().map(|s| s.trim_matches('"').to_string()),
                 storage_class: obj.storage_class().map(|sc| sc.as_str().to_string()),
-            })
-            .collect();
+            });
+        }
 
         Ok(ListPage { folders, files })
     }
@@ -979,5 +1013,33 @@ mod tests {
     fn rename_prefix_allows_sibling_move() {
         validate_rename_prefix("a/", "b/").unwrap();
         validate_rename_prefix("parent/a/", "parent/b/").unwrap();
+    }
+
+    #[test]
+    fn classify_listing_entry_skips_placeholder_for_current_prefix() {
+        // The 0-byte "photos/" object inside `prefix = "photos/"` is the
+        // listing prefix itself and must not be rendered.
+        assert_eq!(classify_listing_entry("photos/", "photos/"), (false, true));
+        assert_eq!(classify_listing_entry("", ""), (false, true));
+    }
+
+    #[test]
+    fn classify_listing_entry_promotes_folder_placeholders() {
+        // R2 returns "newfolder/" in Contents when only the placeholder
+        // exists; we want those in the folder list, not the file list.
+        assert_eq!(
+            classify_listing_entry("photos/newfolder/", "photos/"),
+            (true, false),
+        );
+        assert_eq!(
+            classify_listing_entry("newfolder/", ""),
+            (true, false),
+        );
+    }
+
+    #[test]
+    fn classify_listing_entry_keeps_regular_files() {
+        assert_eq!(classify_listing_entry("photos/a.jpg", "photos/"), (false, false));
+        assert_eq!(classify_listing_entry("readme.md", ""), (false, false));
     }
 }

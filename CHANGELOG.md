@@ -4,16 +4,14 @@
 
 ## [0.1.8](https://github.com/bucketdock/bucketdock/compare/v0.1.7...v0.1.8) (2026-05-03)
 
-
 ### Features
 
-* add select folder when copying, fix window moving, add detailed info on connection error ([e4848f1](https://github.com/bucketdock/bucketdock/commit/e4848f12819145be6357147b03f9d85130050af1))
-* added inline filter, preview, copy files/folder between buckets ([3c6536d](https://github.com/bucketdock/bucketdock/commit/3c6536d0e8b34b3df96eacdb71ec1bdfdbf7cf69))
-
+- add select folder when copying, fix window moving, add detailed info on connection error ([e4848f1](https://github.com/bucketdock/bucketdock/commit/e4848f12819145be6357147b03f9d85130050af1))
+- added inline filter, preview, copy files/folder between buckets ([3c6536d](https://github.com/bucketdock/bucketdock/commit/3c6536d0e8b34b3df96eacdb71ec1bdfdbf7cf69))
 
 ### Bug Fixes
 
-* README.md updates ([e1f1533](https://github.com/bucketdock/bucketdock/commit/e1f15333abbc8bc95b4f7b29c2c2776ae0ac07df))
+- README.md updates ([e1f1533](https://github.com/bucketdock/bucketdock/commit/e1f15333abbc8bc95b4f7b29c2c2776ae0ac07df))
 
 ## [0.1.7](https://github.com/bucketdock/bucketdock/compare/v0.1.6...v0.1.7) (2026-05-03)
 

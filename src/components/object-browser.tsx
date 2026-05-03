@@ -216,12 +216,24 @@ export default function ObjectBrowser() {
 
   // ── Listing ────────────────────────────────────────────────────────────────
 
+  // Monotonically-increasing token used to discard out-of-date listing
+  // responses. When the user switches connection / bucket / prefix or hits
+  // refresh, we bump this; any in-flight `listObjects` whose response lands
+  // *after* a newer fetch has started is ignored. Without this guard a slow
+  // failed listing for connection A can clobber a successful listing for
+  // connection B that the user just switched to — which manifested as the
+  // browser appearing to "remember" the broken connection until you clicked
+  // away and back.
+  const fetchTokenRef = React.useRef(0);
+
   const fetchListing = React.useCallback(async () => {
     if (!connId || !bucket) return;
+    const token = ++fetchTokenRef.current;
     setListing((s) => ({ ...s, loading: true, error: null }));
     setSelection(new Set());
     try {
       const page = await listObjects(connId, bucket, prefix);
+      if (token !== fetchTokenRef.current) return;
       setListing({
         folders: page.folders,
         files: page.files,
@@ -229,6 +241,7 @@ export default function ObjectBrowser() {
         error: null,
       });
     } catch (err) {
+      if (token !== fetchTokenRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
       setListing((s) => ({ ...s, loading: false, error: msg }));
       toast.error(`Failed to list objects: ${msg}`);
@@ -238,6 +251,47 @@ export default function ObjectBrowser() {
   React.useEffect(() => {
     fetchListing();
   }, [fetchListing]);
+
+  // Auto-refresh the listing whenever an upload or copy that lands inside
+  // the currently-open bucket+prefix finishes. Without this, dropping a file
+  // or queueing a copy in this folder would leave the table stale until the
+  // user manually clicked refresh.
+  React.useEffect(() => {
+    if (!connId || !bucket) return;
+    let lastSeenDone = new Set(
+      useTransfersStore
+        .getState()
+        .items.filter((t) => t.status !== "running" && t.status !== "queued")
+        .map((t) => t.id),
+    );
+    const unsub = useTransfersStore.subscribe((state) => {
+      const c = connIdRef.current;
+      const b = bucketRef.current;
+      const p = prefixRef.current;
+      if (!c || !b) return;
+      let touchesView = false;
+      const nextSeen = new Set<string>();
+      for (const t of state.items) {
+        if (t.status === "running" || t.status === "queued") continue;
+        nextSeen.add(t.id);
+        if (lastSeenDone.has(t.id)) continue;
+        if (t.status !== "done") continue;
+        const matchesView =
+          (t.kind === "upload" &&
+            t.params.connectionId === c &&
+            t.params.bucket === b &&
+            (t.params.key ?? "").startsWith(p)) ||
+          (t.kind === "copy" &&
+            t.params.dstConnectionId === c &&
+            t.params.dstBucket === b &&
+            (t.params.dstKey ?? "").startsWith(p));
+        if (matchesView) touchesView = true;
+      }
+      lastSeenDone = nextSeen;
+      if (touchesView) fetchListing();
+    });
+    return unsub;
+  }, [connId, bucket, fetchListing]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 

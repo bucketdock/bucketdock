@@ -20,6 +20,7 @@ import {
   type ConnectionInput,
   type Provider,
 } from "@/lib/tauri";
+import { friendlyConnectionError } from "@/lib/connection-errors";
 import { useAppStore } from "@/store/app-store";
 
 interface Props {
@@ -110,41 +111,12 @@ export default function ConnectionFormModal({ open, onClose, initial }: Props) {
   }
 
   // Translate raw S3 / Tauri errors into something users can act on. The
-  // backend already appends a hint for the common AWS error codes; this
-  // function adds frontend-only context (e.g. encouraging the Buckets field
-  // when the credentials look bucket-scoped).
+  // mapping itself lives in `friendlyConnectionError` so it can be unit
+  // tested without rendering this modal.
   function friendlyError(err: unknown): string {
-    const raw = err instanceof Error ? err.message : String(err);
-    const lower = raw.toLowerCase();
-    if (
-      lower.includes("accessdenied") ||
-      lower.includes("not authorized") ||
-      lower.includes("forbidden")
-    ) {
-      const hint = bucketFilter.trim()
-        ? "The provider rejected access to the listed bucket(s)."
-        : "If your credentials are scoped to specific buckets, list them in the Buckets field below.";
-      return `Access denied. ${hint}`;
-    }
-    if (lower.includes("signaturedoesnotmatch")) {
-      return "The Secret Access Key was rejected. Re-paste it carefully — extra whitespace is a common culprit.";
-    }
-    if (lower.includes("invalidaccesskeyid")) {
-      return "The Access Key ID is not recognised by the provider.";
-    }
-    if (lower.includes("nosuchbucket")) {
-      return "Bucket not found at this endpoint. Check the bucket name and region.";
-    }
-    if (
-      lower.includes("dispatch failure") ||
-      lower.includes("dns") ||
-      lower.includes("connection refused") ||
-      lower.includes("timed out") ||
-      lower.includes("network")
-    ) {
-      return "Could not reach the endpoint. Check the endpoint URL and your internet connection.";
-    }
-    return raw;
+    return friendlyConnectionError(err, {
+      hasBucketFilter: !!bucketFilter.trim(),
+    });
   }
 
   async function handleTest() {

@@ -5,6 +5,7 @@ import { HardDrive, RotateCw, Edit2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 import { listBuckets, isTauri } from "@/lib/tauri";
+import { friendlyConnectionError } from "@/lib/connection-errors";
 import { useAppStore } from "@/store/app-store";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,6 +65,13 @@ export default function BucketsPane({ connectionId }: BucketsPaneProps) {
     }
   }, [connectionId, setBuckets]);
 
+  // Reset error when switching connections so a previous failure doesn't
+  // leak into the next connection's pane while its first listBuckets is
+  // still in flight.
+  React.useEffect(() => {
+    setError(null);
+  }, [connectionId]);
+
   React.useEffect(() => {
     if (!buckets) refresh();
   }, [buckets, refresh]);
@@ -71,6 +79,9 @@ export default function BucketsPane({ connectionId }: BucketsPaneProps) {
   const hasBucketFilter = !!connection?.bucket_filter?.trim();
   const scopedHint =
     error && !hasBucketFilter && isLikelyScopedCredsError(error);
+  const friendlyError = error
+    ? friendlyConnectionError(new Error(error), { hasBucketFilter })
+    : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -120,13 +131,9 @@ export default function BucketsPane({ connectionId }: BucketsPaneProps) {
                   connection and put the bucket name(s) in the{" "}
                   <strong>Buckets</strong> field — the app will use them
                   directly without trying to list.
-                  <br />
-                  <span className="text-neutral-500 dark:text-neutral-500 text-xs">
-                    Original error: {error}
-                  </span>
                 </span>
               ) : (
-                error
+                friendlyError
               )
             }
             action={

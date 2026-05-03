@@ -10,7 +10,7 @@ use tauri::menu::{
     AboutMetadata, AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem,
     SubmenuBuilder,
 };
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, WindowEvent};
 
 const WEBSITE_URL: &str = "https://bucketdock.com";
 const REPO_URL: &str = "https://github.com/bucketdock/bucketdock";
@@ -147,6 +147,22 @@ pub fn run() {
               }
           }
       });
+
+      // ── macOS: close button hides the window instead of quitting ─────────
+      // Closing the last window on macOS is not the same as quitting; the
+      // platform convention is for the red traffic-light button to *hide*
+      // the window so it can be brought back from the dock. The reopen
+      // handler below restores the window when the dock icon is clicked.
+      #[cfg(target_os = "macos")]
+      if let Some(win) = app_handle.get_webview_window("main") {
+          let win_for_event = win.clone();
+          win.on_window_event(move |event| {
+              if let WindowEvent::CloseRequested { api, .. } = event {
+                  api.prevent_close();
+                  let _ = win_for_event.hide();
+              }
+          });
+      }
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -177,8 +193,29 @@ pub fn run() {
       commands_transfers::copy_object_tracked,
       commands_transfers::cancel_transfer,
     ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|app_handle, event| {
+        // ── macOS dock-icon reactivation ────────────────────────────────
+        // When the user clicks BucketDock in the dock and there are no
+        // visible windows (because the close button hid the main window),
+        // re-show and focus it. Without this handler the app would appear
+        // unresponsive after the window is hidden.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+            if !has_visible_windows {
+                if let Some(win) = app_handle.get_webview_window("main") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+        }
+        // Suppress unused-variable warnings on non-macOS builds.
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (app_handle, event);
+        }
+    });
 }
 
 fn open_external(app: &tauri::AppHandle, url: &str) -> Result<(), tauri::Error> {

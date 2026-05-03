@@ -245,13 +245,6 @@ export default function CopyToModal({
   const fileCount = keys.filter((k) => !k.endsWith("/")).length;
   const folderCount = keys.length - fileCount;
 
-  function browseUp() {
-    if (!browsePrefix) return;
-    const trimmed = browsePrefix.replace(/\/$/, "");
-    const idx = trimmed.lastIndexOf("/");
-    setBrowsePrefix(idx === -1 ? "" : trimmed.slice(0, idx + 1));
-  }
-
   return (
     <Modal
       open={open}
@@ -343,7 +336,16 @@ export default function CopyToModal({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={browseUp}
+                onClick={() => {
+                  // Walk up one level and keep the destination input in sync
+                  // with the visible browser path so the user can click Copy
+                  // at any time without a separate "Use this folder" step.
+                  const trimmed = browsePrefix.replace(/\/$/, "");
+                  const idx = trimmed.lastIndexOf("/");
+                  const next = idx === -1 ? "" : trimmed.slice(0, idx + 1);
+                  setBrowsePrefix(next);
+                  setDstPrefix(next);
+                }}
                 disabled={!browsePrefix}
                 aria-label="Up one level"
                 title="Up one level"
@@ -354,14 +356,12 @@ export default function CopyToModal({
                 {dstBucket}/{browsePrefix}
               </span>
               <span className="flex-1" />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDstPrefix(browsePrefix)}
-                title="Use this folder as the destination"
+              <span
+                className="text-[11px] text-neutral-500 dark:text-neutral-400 select-none"
+                title="The destination follows your selection here automatically"
               >
-                Use this folder
-              </Button>
+                Click a folder to drill in — Copy uses the current path.
+              </span>
             </div>
             <div className="max-h-48 overflow-auto py-1">
               {browseLoading ? (
@@ -371,15 +371,22 @@ export default function CopyToModal({
                 </div>
               ) : browseFolders.length === 0 ? (
                 <div className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
-                  No subfolders here. Click <em>Use this folder</em> above to
-                  drop the items at this level.
+                  No subfolders here. Click <strong>Copy</strong> below to drop
+                  the items at this level.
                 </div>
               ) : (
                 browseFolders.map((f) => (
                   <button
                     key={f}
                     type="button"
-                    onClick={() => setBrowsePrefix(browsePrefix + f)}
+                    onClick={() => {
+                      // Drill into the folder AND set it as the destination
+                      // in one click. Replaces the old two-step "navigate +
+                      // Use this folder" flow.
+                      const next = browsePrefix + f;
+                      setBrowsePrefix(next);
+                      setDstPrefix(next);
+                    }}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-black/5 dark:hover:bg-white/5"
                   >
                     <Folder className="w-3.5 h-3.5 text-yellow-500" />
