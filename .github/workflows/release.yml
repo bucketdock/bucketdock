@@ -224,10 +224,8 @@ jobs:
 
           pnpm tauri build --target ${{ matrix.target }}
 
-      - name: Validate macOS bundle
-        env:
-          SIGNING_MODE: ${{ steps.apple-config.outputs.signing_mode }}
-          NOTARY_MODE: ${{ steps.apple-config.outputs.notary_mode }}
+      - name: Locate macOS artifacts
+        id: macos-artifacts
         shell: bash
         run: |
           set -euo pipefail
@@ -239,19 +237,32 @@ jobs:
             exit 1
           fi
 
-          if [ "$SIGNING_MODE" = 'developer-id' ]; then
-            codesign --verify --deep --strict --verbose=2 "$app_dir"
+          echo "app_dir=$app_dir" >> "$GITHUB_OUTPUT"
+          echo "dmg_path=$dmg_path" >> "$GITHUB_OUTPUT"
 
-            if [ "$NOTARY_MODE" = 'api' ] || [ "$NOTARY_MODE" = 'apple-id' ]; then
-              spctl -a -t exec -vv "$app_dir"
-              xcrun stapler validate "$app_dir"
-              xcrun stapler validate "$dmg_path"
-            else
-              echo 'Skipping Gatekeeper and stapler validation because notarization is not configured.'
-            fi
-          else
-            echo 'Skipping signature and notarization validation for the unsigned developer-preview build.'
-          fi
+      - name: Skip signature validation for developer preview
+        if: steps.apple-config.outputs.signing_mode != 'developer-id'
+        run: echo 'Skipping signature and notarization validation for the unsigned developer-preview build.'
+
+      - name: Validate signed macOS bundle
+        if: steps.apple-config.outputs.signing_mode == 'developer-id'
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict --verbose=2 "${{ steps.macos-artifacts.outputs.app_dir }}"
+
+      - name: Skip notarization validation
+        if: steps.apple-config.outputs.signing_mode == 'developer-id' && steps.apple-config.outputs.notary_mode == 'none'
+        run: echo 'Skipping Gatekeeper and stapler validation because notarization is not configured.'
+
+      - name: Validate notarized macOS bundle
+        if: steps.apple-config.outputs.notary_mode == 'api' || steps.apple-config.outputs.notary_mode == 'apple-id'
+        shell: bash
+        run: |
+          set -euo pipefail
+          spctl -a -t exec -vv "${{ steps.macos-artifacts.outputs.app_dir }}"
+          xcrun stapler validate "${{ steps.macos-artifacts.outputs.app_dir }}"
+          xcrun stapler validate "${{ steps.macos-artifacts.outputs.dmg_path }}"
 
       - name: Collect artifacts
         run: |
