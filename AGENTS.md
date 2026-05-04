@@ -2,81 +2,30 @@
 
 # BucketDock Agent Notes
 
-## Project Shape
+BucketDock is a macOS app with a Next.js 16 App Router frontend in `src/` and a Tauri 2 / Rust backend in `src-tauri/`.
 
-BucketDock is a macOS desktop app built from:
+## Core Rules
 
-- Next.js 16 App Router frontend in `src/`
-- Tauri 2 shell and Rust backend in `src-tauri/`
-- AWS SDK based S3 client in `src-tauri/src/s3.rs`
-
-The frontend never talks to S3 directly. All storage operations go through Tauri commands.
-
-## Next.js Rule
-
-This repo uses Next.js 16. Do not rely on stale framework knowledge.
-
-For Next.js-specific behavior, APIs, config, and conventions:
-
-- use the official Next.js docs first
-- prefer the MCP Next.js docs flow when available
-- keep changes compatible with the App Router setup already in `src/app/`
-
-## Backend Facts
-
-- Connection metadata is stored in `~/Library/Application Support/BucketDock/connections.json`
-- Secret access keys are stored in the macOS Keychain under service `com.bucketdock.app`
-- Since the keychain refactor, every secret lives inside a **single bundled keychain entry** with account `bucketdock://secrets-v2` (a JSON `{id -> secret}` map). Legacy per-id entries are migrated forward on first read and then deleted. Do not reintroduce per-id `Entry::new(service, id)` calls outside the migration path in `connections.rs`.
-- The Rust backend uses `keyring` with the native macOS backend enabled
-- `S3Client::from_connection` is the main credential and endpoint assembly point
-
-## Cloudflare R2 Rules
-
-- use the account endpoint, not a bucket-appended URL
-- keep region set to `auto`
-- bucket-scoped credentials must set `bucket_filter`
-- the backend currently forces path-style addressing for `r2` and `custom` providers
-
-## High-Value Files
-
-- `src/components/connection-form-modal.tsx`: add/edit/test connection UI
-- `src/components/connections-sidebar.tsx`: saved connection list and bucket loading
-- `src/components/object-browser.tsx`: main browser UI and object actions
-- `src/components/transfer-queue.tsx`: bottom-right transfer dock (progress, cancel, retry)
-- `src/components/copy-to-modal.tsx`: bucket-to-bucket copy destination picker (files and folders)
-- `src/components/object-info-modal.tsx`: object info viewer + headers/metadata editor (`mode="info" | "edit"`)
-- `src/components/file-preview-modal.tsx`: inline preview for images / audio / video / PDF / text
-- `src/store/transfers-store.ts`: transfer queue state, dispatches tracked Tauri commands
-- `src/lib/tauri.ts`: frontend Tauri command bridge
-- `src-tauri/src/commands_conns.rs`: add/update/delete/test connection commands
-- `src-tauri/src/commands_s3.rs`: bucket and object command handlers
-- `src-tauri/src/commands_transfers.rs`: tracked upload/download/copy + cancel
-- `src-tauri/src/connections.rs`: metadata persistence and keychain helpers
-- `src-tauri/src/s3.rs`: AWS SDK client configuration and storage operations
-
-## Validation
-
-- backend: `cargo check --manifest-path src-tauri/Cargo.toml`
-- backend tests (gating CI): `cargo test --manifest-path src-tauri/Cargo.toml`
-- frontend tests (gating CI): `pnpm test` (Vitest + jsdom). New helpers belong in `src/lib/` so they can be imported directly into `*.test.ts` files without rendering the UI.
-- desktop app: `pnpm tauri dev`
-- frontend only: `pnpm dev --port 1420`
+- The frontend never talks to S3 directly. Storage work goes through Tauri commands.
+- For Next.js behavior, use current official docs or MCP docs and keep changes compatible with `src/app/`.
+- `src-tauri/src/s3.rs` owns S3 client behavior, and `S3Client::from_connection` is the main credential / endpoint assembly point.
+- Connection metadata lives in `~/Library/Application Support/BucketDock/connections.json`.
+- Secrets live in one bundled macOS Keychain entry: service `com.bucketdock.app`, account `bucketdock://secrets-v2`. Do not reintroduce per-id keychain entries outside the migration path.
+- For Cloudflare R2, use the account endpoint, keep region `auto`, and require `bucket_filter` for bucket-scoped credentials.
+- Keep connection validation and parsing in `connections::validate_input` and `connections::parse_bucket_filter`. Keep user-facing connection error classification in `friendlyConnectionError`.
 
 ## Guardrails
 
-- Object tags, Finder reveal, and bucket policy inspection are not implemented. Do not claim them.
-- Folder rename / move and cross-bucket folder copy are implemented as recursive copy-and-delete (`rename_prefix` and bulk `copy_object_tracked`); they are not atomic server-side operations.
-- The Type column in the object browser is **not** derived from extension. It uses `s3DefaultContentType()` from `src/lib/mime.ts`, which always returns `application/octet-stream` for files (and an em-dash for folders) — the value S3 itself defaults to when no `Content-Type` is set on PutObject. The real `Content-Type` reported by the server is shown in the Get Info modal only — list_objects_v2 does not include it.
-- Bucket-to-bucket copy uses pure helpers in `src/lib/copy-targets.ts` (`normalizeDstPrefix`, `selfCopyReason`) so the self-overwrite guard can be unit-tested without rendering the modal. Keep those helpers free of React / Tauri imports.
-- Connection error messages flow through `friendlyConnectionError` in `src/lib/connection-errors.ts` (used by both `connection-form-modal.tsx` and `buckets-pane.tsx`). Keep new error-classification rules in that helper so they stay testable.
-- The S3 listing logic lives in `s3::list_objects` and uses the pure `classify_listing_entry` helper to dedupe R2-style folder placeholders into the `folders` vector. Folder keys are returned **with** the request prefix (same convention as files) — do not strip it again, the frontend slices `prefix.length` off for display.
-- The macOS red traffic-light button hides the window (`WindowEvent::CloseRequested` → `prevent_close + hide`), and the `RunEvent::Reopen` handler in `src-tauri/src/lib.rs` brings it back when the dock icon is clicked. Cmd+Q still quits via the standard menu item.
-- The base `Input` component (`src/components/ui/input.tsx`) defaults `autoCorrect`/`autoCapitalize`/`spellCheck` off so the WKWebView suggestion popover doesn't mangle file/folder names or AWS keys. Callers can opt back in per-prop.
-- When a `list_buckets` call fails on a connection that has no bucket filter, **do not** raise a toast — `BucketsPane` already renders the error inline with an Edit Connection action. Toasting again was the source of duplicated error popups.
-- Connection inputs flow through `connections::validate_input` and bucket filters through `connections::parse_bucket_filter`; do not reintroduce ad-hoc validation or splitting.
-- The native macOS application menu lives in `src-tauri/src/lib.rs`. Help links open via `tauri-plugin-opener`; everything else emits the `menu://action` event with the menu item id, listened to by `object-browser.tsx` and `connections-sidebar.tsx`.
-- Multipart uploads emit per-part progress; single-PutObject uploads still emit only start / complete.
+- Do not claim object tags, Finder reveal, or bucket policy inspection. They are not implemented.
+- Folder rename / move and cross-bucket folder copy are recursive copy-and-delete, not atomic server-side operations.
+- The object browser Type column is not extension-based; the real `Content-Type` only appears in Get Info.
 - If a saved connection behaves differently from a form test, inspect keychain persistence before changing S3 logic.
-- Backend Rust unit tests are required to pass in CI (Smoke workflow); add new tests under `#[cfg(test)] mod tests` next to the code they cover.
-- Prefer small, local changes around the owning abstraction instead of broad rewrites.
+
+## Validation
+
+- `cargo check --manifest-path src-tauri/Cargo.toml`
+- `cargo test --manifest-path src-tauri/Cargo.toml`
+- `pnpm test`
+- `pnpm tauri dev`
+- `pnpm dev --port 1420`
 <!-- END:nextjs-agent-rules -->
