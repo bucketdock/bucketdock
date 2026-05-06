@@ -42,9 +42,25 @@
             >GitHub</a
           >
         </nav>
-        <button class="nav-menu-btn" id="nav-open" aria-label="Open menu" aria-expanded="false" aria-controls="nav-overlay">
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <line x1="2" y1="5" x2="16" y2="5"/><line x1="2" y1="9" x2="16" y2="9"/><line x1="2" y1="13" x2="16" y2="13"/>
+        <button
+          class="nav-menu-btn"
+          id="nav-open"
+          aria-label="Open menu"
+          aria-expanded="false"
+          aria-controls="nav-overlay"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 18 18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          >
+            <line x1="2" y1="5" x2="16" y2="5" />
+            <line x1="2" y1="9" x2="16" y2="9" />
+            <line x1="2" y1="13" x2="16" y2="13" />
           </svg>
           Menu
         </button>
@@ -52,13 +68,26 @@
     </header>
 
     <!-- Mobile full-screen nav overlay -->
-    <div id="nav-overlay" class="nav-overlay" role="dialog" aria-modal="true" aria-label="Site navigation">
-      <button class="nav-overlay-close" id="nav-close" aria-label="Close menu">&times;</button>
+    <div
+      id="nav-overlay"
+      class="nav-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Site navigation"
+    >
+      <button class="nav-overlay-close" id="nav-close" aria-label="Close menu">
+        &times;
+      </button>
       <nav class="nav-overlay-links">
         <a href="index.html">Home</a>
         <a href="docs.html" class="is-current">Docs</a>
         <a href="install.html">Install</a>
-        <a href="https://github.com/bucketdock/bucketdock" target="_blank" rel="noopener">GitHub ↗</a>
+        <a
+          href="https://github.com/bucketdock/bucketdock"
+          target="_blank"
+          rel="noopener"
+          >GitHub ↗</a
+        >
       </nav>
     </div>
 
@@ -331,7 +360,8 @@ pnpm tauri build</code></pre>
           if (e.target === overlay) closeMenu();
         });
         document.addEventListener("keydown", function (e) {
-          if (e.key === "Escape" && overlay.classList.contains("is-open")) closeMenu();
+          if (e.key === "Escape" && overlay.classList.contains("is-open"))
+            closeMenu();
         });
       })();
     </script>
