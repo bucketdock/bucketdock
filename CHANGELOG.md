@@ -2,12 +2,44 @@
 
 ## Unreleased
 
-## [0.1.9](https://github.com/bucketdock/bucketdock/compare/v0.1.8...v0.1.9) (2026-05-03)
+### Features
 
+- **Object browser**: Type column now shows the real `Content-Type` returned
+  by S3 (HEAD per file, batched concurrently) instead of an extension-based
+  guess. Falls back to the extension default while the HEAD requests are in
+  flight.
+- **Copy modal**: Redesigned destination picker. The folder browser is now
+  always visible, drives the destination directly, supports breadcrumb
+  navigation, and shows the chosen path with a green check. The separate
+  prefix text field and "Browse…" toggle are gone.
 
 ### Bug Fixes
 
-* fix refresh file list after folder creation, simplify file coping ([efaaf2c](https://github.com/bucketdock/bucketdock/commit/efaaf2c9f9abc14f8e6bab355f324ff352761ab0))
+- **Copy modal**: Fixed broken folder drill-down. Drilling deeper produced a
+  doubled prefix (e.g. `photos/photos/2024/`) and an empty listing. Folder
+  drill-down now uses the listing's absolute key as the new browse prefix.
+  Regression covered by `src/lib/copy-targets.test.ts` and
+  `src/components/copy-to-modal.test.tsx`.
+- **Window scroll**: Disabled rubber-band scrolling of the entire app shell.
+  The window content is now locked (`position: fixed` on body); only the
+  designated panes scroll.
+- **Titlebar**: Increased the custom title bar height so the macOS traffic
+  light buttons sit comfortably and are no longer cramped against the top.
+  The "BucketDock" label is centered vertically against them.
+- **Object browser table**: Tightened vertical row spacing so file/folder
+  rows look denser and more polished.
+- **Website**: Mobile responsive overhaul. Fixed the `.shot-card` layout
+  that previously misused `grid-template-columns` on a flex container,
+  reduced the oversized notice-banner bottom margin on phones, kept the nav
+  links visible (with smaller spacing) instead of hiding them, made the
+  hero buttons stack full-width, and added a 460px breakpoint for very
+  narrow phones.
+
+## [0.1.9](https://github.com/bucketdock/bucketdock/compare/v0.1.8...v0.1.9) (2026-05-03)
+
+### Bug Fixes
+
+- fix refresh file list after folder creation, simplify file coping ([efaaf2c](https://github.com/bucketdock/bucketdock/commit/efaaf2c9f9abc14f8e6bab355f324ff352761ab0))
 
 ## [0.1.8](https://github.com/bucketdock/bucketdock/compare/v0.1.7...v0.1.8) (2026-05-03)
 

@@ -655,6 +655,22 @@ impl S3Client {
         })
     }
 
+    /// Lightweight HEAD that only returns Content-Type. Used by the object
+    /// browser to populate the Type column with what S3 actually stores
+    /// (instead of guessing from the file extension or showing the
+    /// `application/octet-stream` default for every file).
+    pub async fn head_content_type(&self, bucket: &str, key: &str) -> Result<Option<String>> {
+        let resp = self
+            .client
+            .head_object()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(fmt_sdk_err)?;
+        Ok(resp.content_type().map(|s| s.to_string()))
+    }
+
     pub async fn update_object_metadata(
         &self,
         bucket: &str,

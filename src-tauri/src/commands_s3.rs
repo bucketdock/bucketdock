@@ -229,3 +229,46 @@ pub async fn read_object_preview(
     let client = S3Client::from_connection(&ConnectionLike::from(&conn)).await?;
     client.read_object_preview(&bucket, &key, max_bytes).await
 }
+
+/// HEAD a batch of object keys in parallel and return the per-key
+/// `Content-Type` header (or `None` when the object has none stored).
+///
+/// The browser's listing API (`list_objects_v2`) does not return Content-Type,
+/// so the only honest way to show the real S3 type in the Type column is to
+/// perform one HEAD per file. We fan out with bounded concurrency so a folder
+/// of hundreds of files doesn't open a thousand sockets at once. Errors on a
+/// single key are absorbed — a missing entry just means "unknown".
+#[tauri::command]
+pub async fn head_object_content_types(
+    connection_id: String,
+    bucket: String,
+    keys: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, Option<String>>> {
+    use futures::stream::{self, StreamExt};
+
+    let conn = state.get_connection(&connection_id).await?;
+    let client = std::sync::Arc::new(
+        S3Client::from_connection(&ConnectionLike::from(&conn)).await?,
+    );
+
+    // Hard cap on concurrency keeps us friendly to provider rate limits and
+    // avoids exhausting the file-descriptor / socket budget on big folders.
+    const CONCURRENCY: usize = 8;
+    let bucket = std::sync::Arc::new(bucket);
+
+    let results: Vec<(String, Option<String>)> = stream::iter(keys.into_iter())
+        .map(|key| {
+            let c = client.clone();
+            let b = bucket.clone();
+            async move {
+                let res = c.head_content_type(&b, &key).await.ok().flatten();
+                (key, res)
+            }
+        })
+        .buffer_unordered(CONCURRENCY)
+        .collect()
+        .await;
+
+    Ok(results.into_iter().collect())
+}

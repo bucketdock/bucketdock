@@ -249,6 +249,20 @@ export function readObjectPreview(
   });
 }
 
+/**
+ * HEAD a batch of object keys in parallel and return a `key -> Content-Type`
+ * map. Keys with no stored Content-Type (or that fail to HEAD) are returned
+ * with a `null` value so the caller can distinguish "checked but unknown"
+ * from "not yet fetched".
+ */
+export function headObjectContentTypes(
+  connectionId: string,
+  bucket: string,
+  keys: string[],
+): Promise<Record<string, string | null>> {
+  return call("head_object_content_types", { connectionId, bucket, keys });
+}
+
 export interface ObjectMetadata {
   content_type: string | null;
   cache_control: string | null;

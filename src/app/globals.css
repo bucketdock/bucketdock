@@ -3,7 +3,7 @@
 :root {
   --background: oklch(0.99 0 0);
   --foreground: oklch(0.15 0.01 270);
-  --accent: #007AFF;
+  --accent: #007aff;
   --border: oklch(0 0 0 / 0.1);
 }
 
@@ -21,15 +21,35 @@
   --color-accent: var(--accent);
 }
 
-html, body {
+html,
+body {
   height: 100%;
+  /* The whole app is a fixed-size frame: every scrollable region lives
+     inside its own pane (sidebar, file table, transfer queue). Letting the
+     document itself scroll causes the macOS rubber-band effect to drag the
+     entire UI up/down, which feels broken in a native window. */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
   @apply antialiased;
   background: transparent;
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    system-ui, sans-serif;
+  /* Belt-and-braces — Safari/WKWebView on macOS still rubber-bands a
+     `overflow: hidden` body for touchpad inertia unless we lock position. */
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  overscroll-behavior: none;
+}
+
+/* Inner panes opt back in to scrolling. */
+.pane-scroll {
+  overscroll-behavior: contain;
 }
 
 /* Draggable titlebar regions */

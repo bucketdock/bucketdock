@@ -37,6 +37,7 @@ import {
   uploadFolder,
   downloadFolder,
   deletePrefix,
+  headObjectContentTypes,
   type ObjectInfo,
 } from "@/lib/tauri";
 import { useAppStore } from "@/store/app-store";
@@ -186,6 +187,13 @@ export default function ObjectBrowser() {
   const [sortKey, setSortKey] = React.useState<SortKey>("name");
   const [sortDir, setSortDir] = React.useState<SortDir>("asc");
   const [rowMenu, setRowMenu] = React.useState<ContextMenuInfo | null>(null);
+  // key -> Content-Type returned by HEAD. `null` means we asked but the
+  // object had no stored type. `undefined` (absent) means we haven't asked
+  // yet, so the table can show the S3 default placeholder until the value
+  // lands. This map is reset on every fresh listing.
+  const [contentTypes, setContentTypes] = React.useState<
+    Record<string, string | null>
+  >({});
 
   const containerRef = React.useRef<HTMLDivElement>(null);
   const uploadMenuRef = React.useRef<HTMLDivElement>(null);
@@ -231,6 +239,7 @@ export default function ObjectBrowser() {
     const token = ++fetchTokenRef.current;
     setListing((s) => ({ ...s, loading: true, error: null }));
     setSelection(new Set());
+    setContentTypes({});
     try {
       const page = await listObjects(connId, bucket, prefix);
       if (token !== fetchTokenRef.current) return;
@@ -240,6 +249,21 @@ export default function ObjectBrowser() {
         loading: false,
         error: null,
       });
+      // Fan out HEAD requests in the background so the Type column can show
+      // real Content-Type values instead of the S3 default placeholder.
+      // Errors are swallowed: the column gracefully falls back to the
+      // placeholder when a value never arrives.
+      const fileKeys = page.files.map((f) => f.key);
+      if (fileKeys.length > 0 && isTauri()) {
+        headObjectContentTypes(connId, bucket, fileKeys)
+          .then((map) => {
+            if (token !== fetchTokenRef.current) return;
+            setContentTypes((prev) => ({ ...prev, ...map }));
+          })
+          .catch(() => {
+            /* leave placeholder */
+          });
+      }
     } catch (err) {
       if (token !== fetchTokenRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -1109,24 +1133,24 @@ export default function ObjectBrowser() {
                   key={i}
                   className="border-b border-black/4 dark:border-white/4"
                 >
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-1">
                     <Skeleton className="w-4 h-4" />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-1">
                     <Skeleton
                       className={cn("h-4", i % 2 === 0 ? "w-52" : "w-36")}
                     />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-1">
                     <Skeleton className="h-4 w-10" />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-1">
                     <Skeleton className="h-4 w-16" />
                   </td>
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="px-3 py-1 text-right">
                     <Skeleton className="h-4 w-16 ml-auto" />
                   </td>
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="px-3 py-1 text-right">
                     <Skeleton className="h-4 w-24 ml-auto" />
                   </td>
                   <td />
@@ -1279,7 +1303,7 @@ export default function ObjectBrowser() {
                     )}
                   >
                     <td
-                      className="px-3 py-2.5"
+                      className="px-3 py-1"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleCheckbox(folder);
@@ -1292,21 +1316,17 @@ export default function ObjectBrowser() {
                         readOnly
                       />
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-1">
                       <div className="flex items-center gap-2">
                         <Folder className="w-4 h-4 text-yellow-500 shrink-0" />
                         <span className="truncate">{displayName}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-neutral-500">Folder</td>
-                    <td className="px-3 py-2.5 text-neutral-400">—</td>
-                    <td className="px-3 py-2.5 text-right text-neutral-400">
-                      —
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-neutral-400">
-                      —
-                    </td>
-                    <td className="px-1.5 py-2.5 text-right">
+                    <td className="px-3 py-1 text-neutral-500">Folder</td>
+                    <td className="px-3 py-1 text-neutral-400">—</td>
+                    <td className="px-3 py-1 text-right text-neutral-400">—</td>
+                    <td className="px-3 py-1 text-right text-neutral-400">—</td>
+                    <td className="px-1.5 py-1 text-right">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1336,7 +1356,13 @@ export default function ObjectBrowser() {
                 const modDate = file.last_modified
                   ? new Date(file.last_modified)
                   : null;
-                const typeLabel = s3DefaultContentType(file.key);
+                // Real Content-Type once HEAD has resolved; placeholder
+                // until then so the column doesn't flicker.
+                const ctEntry = contentTypes[file.key];
+                const typeLabel =
+                  ctEntry === undefined
+                    ? s3DefaultContentType(file.key)
+                    : (ctEntry ?? s3DefaultContentType(file.key));
                 return (
                   <tr
                     key={file.key}
@@ -1357,7 +1383,7 @@ export default function ObjectBrowser() {
                     )}
                   >
                     <td
-                      className="px-3 py-2.5"
+                      className="px-3 py-1"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleCheckbox(file.key);
@@ -1370,24 +1396,24 @@ export default function ObjectBrowser() {
                         readOnly
                       />
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-1">
                       <div className="flex items-center gap-2">
                         <FileIcon className="w-4 h-4 text-neutral-400 shrink-0" />
                         <span className="truncate">{displayName}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-neutral-500 truncate">
+                    <td className="px-3 py-1 text-neutral-500 truncate">
                       {typeLabel}
                     </td>
-                    <td className="px-3 py-2.5 text-neutral-500 truncate">
+                    <td className="px-3 py-1 text-neutral-500 truncate">
                       {file.storage_class ?? (
                         <span className="text-neutral-400">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-neutral-500 tabular-nums">
+                    <td className="px-3 py-1 text-right text-neutral-500 tabular-nums">
                       {formatSize(file.size)}
                     </td>
-                    <td className="px-3 py-2.5 text-right text-neutral-500 tabular-nums">
+                    <td className="px-3 py-1 text-right text-neutral-500 tabular-nums">
                       {modDate ? (
                         <Tooltip
                           content={`${format(modDate, "yyyy-MM-dd HH:mm:ss")} · ${formatDistanceToNow(modDate, { addSuffix: true })}`}
@@ -1399,7 +1425,7 @@ export default function ObjectBrowser() {
                         <span className="text-neutral-400">—</span>
                       )}
                     </td>
-                    <td className="px-1.5 py-2.5 text-right">
+                    <td className="px-1.5 py-1 text-right">
                       <button
                         type="button"
                         onClick={(e) => {

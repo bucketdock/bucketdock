@@ -47,7 +47,7 @@ Official signed and notarized builds are planned later.
 - Empty states and loading skeletons
 - Inline filter box in the toolbar (case-insensitive substring match)
 - Sortable columns: Name, Type, Storage Class, Size, Modified
-- Type column shows the default Content-Type S3 would assign when none is set (`application/octet-stream` for files, `—` for folders); the real Content-Type returned by the server is shown in Get Info
+- Type column shows the real `Content-Type` returned by the server (fetched via batched HEAD requests after the listing loads); it falls back to the default S3 type (`application/octet-stream` for files, `—` for folders) until the HEAD response arrives
 - Per-row actions menu (…) for keyboard- and mouse-friendly access
 - Modified column shows a short relative time with a full timestamp on hover
 - Right-pane Finder-style bucket grid when a connection is selected without a bucket

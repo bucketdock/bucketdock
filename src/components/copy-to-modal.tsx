@@ -2,13 +2,13 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { ChevronLeft, Folder, FolderOpen } from "lucide-react";
+import { ChevronRight, Folder, Check } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/cn";
 import { useAppStore } from "@/store/app-store";
 import { useTransfersStore } from "@/store/transfers-store";
 import {
@@ -17,7 +17,14 @@ import {
   listKeysUnder,
   type BucketInfo,
 } from "@/lib/tauri";
-import { normalizeDstPrefix, selfCopyReason } from "@/lib/copy-targets";
+import {
+  normalizeDstPrefix,
+  selfCopyReason,
+  browseUp,
+  enterFolderPrefix,
+  folderRowLabel,
+  browseBreadcrumbs,
+} from "@/lib/copy-targets";
 
 export interface CopyToModalProps {
   open: boolean;
@@ -55,22 +62,19 @@ export default function CopyToModal({
   const [dstConnId, setDstConnId] = React.useState<string>(srcConnectionId);
   const [dstBuckets, setDstBuckets] = React.useState<BucketInfo[] | null>(null);
   const [dstBucket, setDstBucket] = React.useState<string>(srcBucket);
-  const [dstPrefix, setDstPrefix] = React.useState<string>("");
-  const [loadingBuckets, setLoadingBuckets] = React.useState(false);
-  const [expanding, setExpanding] = React.useState(false);
-
-  // Folder browser state
-  const [browseOpen, setBrowseOpen] = React.useState(false);
-  const [browsePrefix, setBrowsePrefix] = React.useState("");
+  // The current location of the folder browser. This *is* the destination
+  // prefix — there is no separate text field. Whatever folder the user is
+  // looking at is where the copy will land.
+  const [browsePrefix, setBrowsePrefix] = React.useState<string>("");
   const [browseFolders, setBrowseFolders] = React.useState<string[]>([]);
   const [browseLoading, setBrowseLoading] = React.useState(false);
+  const [loadingBuckets, setLoadingBuckets] = React.useState(false);
+  const [expanding, setExpanding] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     setDstConnId(srcConnectionId);
     setDstBucket(srcBucket);
-    setDstPrefix("");
-    setBrowseOpen(false);
     setBrowsePrefix("");
   }, [open, srcConnectionId, srcBucket]);
 
@@ -102,10 +106,15 @@ export default function CopyToModal({
     };
   }, [open, dstConnId, dstBucket]);
 
-  // Lazy-load folders for the inline browser whenever the user opens it or
-  // navigates into a sub-prefix.
+  // Reset the browser to the bucket root when the destination bucket
+  // changes. The previous browse location is meaningless in another bucket.
   React.useEffect(() => {
-    if (!browseOpen || !dstConnId || !dstBucket) return;
+    setBrowsePrefix("");
+  }, [dstBucket, dstConnId]);
+
+  // Lazy-load the subfolder list for the current browse prefix.
+  React.useEffect(() => {
+    if (!open || !dstConnId || !dstBucket) return;
     let cancelled = false;
     setBrowseLoading(true);
     listObjects(dstConnId, dstBucket, browsePrefix)
@@ -126,11 +135,7 @@ export default function CopyToModal({
     return () => {
       cancelled = true;
     };
-  }, [browseOpen, dstConnId, dstBucket, browsePrefix]);
-
-  function normalizedPrefix(): string {
-    return normalizeDstPrefix(dstPrefix);
-  }
+  }, [open, dstConnId, dstBucket, browsePrefix]);
 
   function blockingReason(): string | null {
     return selfCopyReason({
@@ -140,15 +145,13 @@ export default function CopyToModal({
       selectedKeys: keys,
       dstConnectionId: dstConnId,
       dstBucket,
-      dstPrefixRaw: dstPrefix,
+      dstPrefixRaw: browsePrefix,
     });
   }
 
   async function handleCopy() {
     if (!dstConnId || !dstBucket) {
-      toast.error(
-        "Pick a destination bucket — you can also browse to a destination folder.",
-      );
+      toast.error("Pick a destination bucket.");
       return;
     }
     const reason = blockingReason();
@@ -156,7 +159,7 @@ export default function CopyToModal({
       toast.error(reason);
       return;
     }
-    const prefix = normalizedPrefix();
+    const prefix = normalizeDstPrefix(browsePrefix);
 
     const fileKeys = keys.filter((k) => !k.endsWith("/"));
     const folderKeys = keys.filter((k) => k.endsWith("/"));
@@ -164,7 +167,6 @@ export default function CopyToModal({
     setExpanding(true);
     let queued = 0;
     try {
-      // Files: copy as-is, preserving only the basename under the destination prefix.
       for (const key of fileKeys) {
         const name = key.split("/").filter(Boolean).pop() ?? key;
         const dstKey = prefix + name;
@@ -173,7 +175,6 @@ export default function CopyToModal({
           dstBucket === srcBucket &&
           dstKey === key
         ) {
-          // Same source/destination key — would overwrite itself; skip silently.
           continue;
         }
         enqueueCopy({
@@ -189,8 +190,6 @@ export default function CopyToModal({
         queued++;
       }
 
-      // Folders: list every key under each folder and rebuild the relative
-      // layout under the destination prefix.
       for (const folderKey of folderKeys) {
         const objects = await listKeysUnder(
           srcConnectionId,
@@ -244,6 +243,10 @@ export default function CopyToModal({
 
   const fileCount = keys.filter((k) => !k.endsWith("/")).length;
   const folderCount = keys.length - fileCount;
+  const crumbs = browseBreadcrumbs(dstBucket || "bucket", browsePrefix);
+  const destinationLabel = browsePrefix
+    ? `${dstBucket}/${browsePrefix}`
+    : `${dstBucket}/`;
 
   return (
     <Modal
@@ -262,143 +265,137 @@ export default function CopyToModal({
             </>
           )}
         </p>
-        <div>
-          <Label>Destination connection</Label>
-          <Select
-            value={dstConnId}
-            onChange={(e) => {
-              setDstConnId(e.target.value);
-              setBrowseOpen(false);
-              setBrowsePrefix("");
-            }}
-          >
-            {connections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <Label>Destination bucket</Label>
-          <Select
-            value={dstBucket}
-            onChange={(e) => {
-              setDstBucket(e.target.value);
-              setBrowseOpen(false);
-              setBrowsePrefix("");
-            }}
-            disabled={loadingBuckets || !dstBuckets}
-          >
-            {loadingBuckets && <option>Loading…</option>}
-            {!loadingBuckets && dstBuckets?.length === 0 && (
-              <option value="">No buckets</option>
-            )}
-            {dstBuckets?.map((b) => (
-              <option key={b.name} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <Label>Destination prefix (optional)</Label>
-          <div className="flex gap-2">
-            <Input
-              placeholder="e.g. backups/"
-              value={dstPrefix}
-              onChange={(e) => setDstPrefix(e.target.value)}
-              className="flex-1"
-            />
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => {
-                setBrowsePrefix(normalizedPrefix());
-                setBrowseOpen((v) => !v);
-              }}
-              disabled={!dstBucket || loadingBuckets}
-              title="Browse destination folders"
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Connection</Label>
+            <Select
+              value={dstConnId}
+              onChange={(e) => setDstConnId(e.target.value)}
             >
-              <FolderOpen className="w-3.5 h-3.5" />
-              {browseOpen ? "Close" : "Browse…"}
-            </Button>
+              {connections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
           </div>
-          <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-            Leave blank to copy into the bucket root. Browse to pick an existing
-            folder, or type a path to create one.
-          </p>
+          <div>
+            <Label>Bucket</Label>
+            <Select
+              value={dstBucket}
+              onChange={(e) => setDstBucket(e.target.value)}
+              disabled={loadingBuckets || !dstBuckets}
+            >
+              {loadingBuckets && <option>Loading…</option>}
+              {!loadingBuckets && dstBuckets?.length === 0 && (
+                <option value="">No buckets</option>
+              )}
+              {dstBuckets?.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
 
-        {browseOpen && (
-          <div className="rounded-md border border-black/10 dark:border-white/10 bg-white/50 dark:bg-neutral-900/50">
-            <div className="flex items-center gap-2 px-2 py-1.5 border-b border-black/8 dark:border-white/8 text-xs">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  // Walk up one level and keep the destination input in sync
-                  // with the visible browser path so the user can click Copy
-                  // at any time without a separate "Use this folder" step.
-                  const trimmed = browsePrefix.replace(/\/$/, "");
-                  const idx = trimmed.lastIndexOf("/");
-                  const next = idx === -1 ? "" : trimmed.slice(0, idx + 1);
-                  setBrowsePrefix(next);
-                  setDstPrefix(next);
-                }}
-                disabled={!browsePrefix}
-                aria-label="Up one level"
-                title="Up one level"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </Button>
-              <span className="font-mono truncate">
-                {dstBucket}/{browsePrefix}
-              </span>
-              <span className="flex-1" />
-              <span
-                className="text-[11px] text-neutral-500 dark:text-neutral-400 select-none"
-                title="The destination follows your selection here automatically"
-              >
-                Click a folder to drill in — Copy uses the current path.
-              </span>
-            </div>
-            <div className="max-h-48 overflow-auto py-1">
-              {browseLoading ? (
-                <div className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-500">
-                  <Spinner className="w-3.5 h-3.5" />
-                  Loading…
-                </div>
-              ) : browseFolders.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
-                  No subfolders here. Click <strong>Copy</strong> below to drop
-                  the items at this level.
-                </div>
-              ) : (
-                browseFolders.map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => {
-                      // Drill into the folder AND set it as the destination
-                      // in one click. Replaces the old two-step "navigate +
-                      // Use this folder" flow.
-                      const next = browsePrefix + f;
-                      setBrowsePrefix(next);
-                      setDstPrefix(next);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-black/5 dark:hover:bg-white/5"
-                  >
-                    <Folder className="w-3.5 h-3.5 text-yellow-500" />
-                    <span className="truncate">
-                      {f.slice(browsePrefix.length).replace(/\/$/, "")}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        )}
+        {/* Folder browser. Click a row to drill in. The current path is the
+            destination — clearly shown in the breadcrumbs and the
+            "Destination" badge. */}
+        <div
+          className="rounded-md border border-black/10 dark:border-white/10 bg-white/60 dark:bg-neutral-900/60 overflow-hidden"
+          aria-label="Destination folder browser"
+        >
+          <nav
+            className="flex items-center flex-wrap gap-0.5 px-2.5 py-1.5 border-b border-black/8 dark:border-white/8 text-xs"
+            aria-label="Browse path"
+          >
+            {crumbs.map((c, idx) => (
+              <React.Fragment key={c.prefix}>
+                {idx > 0 && (
+                  <ChevronRight
+                    className="w-3 h-3 text-neutral-400 shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setBrowsePrefix(c.prefix)}
+                  className={cn(
+                    "px-1.5 py-0.5 rounded hover:bg-black/8 dark:hover:bg-white/8 transition-colors truncate max-w-40",
+                    idx === crumbs.length - 1
+                      ? "font-medium text-neutral-900 dark:text-neutral-100"
+                      : "text-neutral-500 dark:text-neutral-400",
+                  )}
+                >
+                  {c.label}
+                </button>
+              </React.Fragment>
+            ))}
+            <span className="flex-1" />
+            <button
+              type="button"
+              onClick={() => setBrowsePrefix(browseUp(browsePrefix))}
+              disabled={!browsePrefix}
+              className="px-1.5 py-0.5 rounded text-[11px] text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-black/8 dark:hover:bg-white/8 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Up one level"
+              title="Up one level"
+            >
+              Up
+            </button>
+          </nav>
+
+          <ul
+            className="max-h-56 overflow-auto py-1 pane-scroll"
+            aria-label="Subfolders"
+          >
+            {browseLoading ? (
+              <li className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-500">
+                <Spinner className="w-3.5 h-3.5" />
+                Loading…
+              </li>
+            ) : browseFolders.length === 0 ? (
+              <li className="px-3 py-3 text-xs text-neutral-500 dark:text-neutral-400">
+                No subfolders here.
+              </li>
+            ) : (
+              browseFolders.map((f) => {
+                const next = enterFolderPrefix(f);
+                return (
+                  <li key={f}>
+                    <button
+                      type="button"
+                      onClick={() => setBrowsePrefix(next)}
+                      className="group w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-black/5 dark:hover:bg-white/5"
+                      aria-label={`Open ${folderRowLabel(f, browsePrefix)}`}
+                    >
+                      <Folder className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                      <span className="truncate">
+                        {folderRowLabel(f, browsePrefix)}
+                      </span>
+                      <ChevronRight className="w-3 h-3 ml-auto text-neutral-400 opacity-0 group-hover:opacity-100" />
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </div>
+
+        <div className="flex items-center gap-2 px-1 text-xs text-neutral-600 dark:text-neutral-400">
+          <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <span className="truncate">
+            Destination:{" "}
+            <span
+              className="font-mono text-neutral-900 dark:text-neutral-100"
+              data-testid="copy-destination"
+            >
+              {destinationLabel}
+            </span>
+          </span>
+        </div>
+
         <div className="flex justify-end gap-2 mt-2">
           <Button variant="secondary" onClick={onClose} disabled={expanding}>
             Cancel

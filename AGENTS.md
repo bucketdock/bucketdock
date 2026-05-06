@@ -18,7 +18,7 @@ BucketDock is a macOS app with a Next.js 16 App Router frontend in `src/` and a 
 
 - Do not claim object tags, Finder reveal, or bucket policy inspection. They are not implemented.
 - Folder rename / move and cross-bucket folder copy are recursive copy-and-delete, not atomic server-side operations.
-- The object browser Type column is not extension-based; the real `Content-Type` only appears in Get Info.
+- The object browser Type column shows the real `Content-Type` returned by a per-file HEAD request (batched, concurrency-limited in `commands_s3::head_object_content_types`); it falls back to the extension-based default while requests are in flight.
 - If a saved connection behaves differently from a form test, inspect keychain persistence before changing S3 logic.
 
 ## Validation

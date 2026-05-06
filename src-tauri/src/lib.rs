@@ -188,6 +188,7 @@ pub fn run() {
       commands_s3::rename_prefix,
       commands_s3::list_keys_under,
       commands_s3::read_object_preview,
+      commands_s3::head_object_content_types,
       commands_transfers::upload_file_tracked,
       commands_transfers::download_file_tracked,
       commands_transfers::copy_object_tracked,

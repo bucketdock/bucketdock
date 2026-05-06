@@ -73,13 +73,14 @@ export default function AppShell() {
           draggable region for moving the window. We use both `titlebar-drag`
           (CSS `-webkit-app-region: drag`, required for the macos-private-api
           Overlay style) and `data-tauri-drag-region` so non-macOS platforms
-          can still drag the window. */}
+          can still drag the window. The bar is intentionally tall (h-12)
+          so the macOS traffic-light buttons sit comfortably and the title
+          is vertically centered with them. */}
       <div
         data-tauri-drag-region
-        className="titlebar-drag flex items-center shrink-0 h-11 select-none"
-        style={{ paddingLeft: 80 }}
+        className="titlebar-drag relative flex items-center justify-center shrink-0 h-12 select-none border-b border-black/5 dark:border-white/5"
       >
-        <span className="no-drag text-xs font-semibold text-neutral-500 dark:text-neutral-400 select-none">
+        <span className="no-drag text-[13px] font-semibold text-neutral-600 dark:text-neutral-300 select-none tracking-tight">
           BucketDock
         </span>
       </div>
