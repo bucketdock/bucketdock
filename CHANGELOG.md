@@ -35,6 +35,18 @@
   hero buttons stack full-width, and added a 460px breakpoint for very
   narrow phones.
 
+## [0.1.10](https://github.com/bucketdock/bucketdock/compare/v0.1.9...v0.1.10) (2026-05-06)
+
+
+### Bug Fixes
+
+* improve folder copying, add tests ([481ba1a](https://github.com/bucketdock/bucketdock/commit/481ba1a302ac1499bb1ec7f503118cf86a72c01c))
+* improve pages for mobile ([ff5fe5d](https://github.com/bucketdock/bucketdock/commit/ff5fe5d70cadb02fe1680f0eb770ebfd81036045))
+* improve website install page ([6e72d2d](https://github.com/bucketdock/bucketdock/commit/6e72d2d62b0c066cf95f2a7a95eae601c22c140e))
+* improve website pages ([1f61ef7](https://github.com/bucketdock/bucketdock/commit/1f61ef74542d1d6cb8c6c25b11b93d7006299b4c))
+* improve website pages ([aee2e03](https://github.com/bucketdock/bucketdock/commit/aee2e032ff27ed37777f1fb6c48bda0b7ce44603))
+* pages ([e1a4dd0](https://github.com/bucketdock/bucketdock/commit/e1a4dd060dbce55d984b787f7343d5cbb0c0c314))
+
 ## [0.1.9](https://github.com/bucketdock/bucketdock/compare/v0.1.8...v0.1.9) (2026-05-03)
 
 ### Bug Fixes
