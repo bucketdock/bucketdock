@@ -45,6 +45,9 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Phones with extra-wide hero gradients can otherwise scroll horizontally
+     by a pixel or two; lock it down. */
+  overflow-x: hidden;
 }
 
 /* Background ambience */
@@ -122,6 +125,76 @@ img {
 }
 .nav-links a:hover {
   color: var(--text);
+}
+
+/* Mobile page selector — hidden on desktop, shown on small phones */
+.nav-menu-btn {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nav-menu-btn svg {
+  flex-shrink: 0;
+}
+.nav-menu-btn:focus-visible {
+  outline: 2px solid rgba(91, 168, 255, 0.55);
+  outline-offset: 2px;
+}
+/* Full-screen overlay menu */
+.nav-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(10, 10, 13, 0.97);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  flex-direction: column;
+  padding: 24px;
+}
+.nav-overlay.is-open {
+  display: flex;
+}
+.nav-overlay-close {
+  align-self: flex-end;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin-bottom: 24px;
+}
+.nav-overlay-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-overlay-links a {
+  display: block;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+.nav-overlay-links a:last-child {
+  border-bottom: none;
+}
+.nav-overlay-links a.is-current {
+  color: var(--brand-blue);
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
@@ -419,7 +492,7 @@ section {
 /* ── Install guide ──────────────────────────────────────────────────────── */
 
 .notice-banner {
-  margin-bottom: 162px;
+  margin-bottom: 56px;
   margin-top: 32px;
   padding: 18px 20px;
   border-radius: 12px;
@@ -490,13 +563,20 @@ section {
 }
 .shot-card {
   display: flex;
-  grid-template-columns: minmax(180px, 0.9fr) 1fr;
+  flex-wrap: wrap;
   gap: 28px;
   align-items: start;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 28px;
+}
+.shot-card > .shot-frame {
+  flex: 0 1 320px;
+}
+.shot-card > div:not(.shot-frame) {
+  flex: 1 1 280px;
+  min-width: 0;
 }
 .shot-frame {
   border-radius: 10px;
@@ -621,15 +701,31 @@ footer {
   color: var(--text-dim);
 }
 
+/* Sticky nav covers anchor targets — push them down by the nav height */
+[id] {
+  scroll-margin-top: 72px;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
-@media (max-width: 700px) {
-  .nav-links {
-    display: none;
+@media (max-width: 900px) {
+  .container {
+    padding: 0 20px;
   }
-  .install-panel,
+  .hero h1 {
+    font-size: clamp(32px, 8vw, 48px);
+  }
+  .shot-card {
+    flex-direction: column;
+    padding: 22px;
+    gap: 20px;
+  }
+  .shot-card > .shot-frame,
+  .shot-card > div:not(.shot-frame) {
+    flex: 1 1 100%;
+  }
   .shot-grid {
-    grid-template-columns: 1fr;
+    gap: 36px;
   }
   .mock-body {
     grid-template-columns: 1fr;
@@ -637,10 +733,104 @@ footer {
   .mock-side {
     display: none;
   }
-  .hero {
-    padding: 70px 0 40px;
+  .install-panel pre,
+  .shot-card pre,
+  .prose pre {
+    font-size: 12px;
+    padding: 14px 14px;
   }
   section {
-    padding: 56px 0;
+    padding: 64px 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .nav-inner {
+    padding: 12px 0;
+  }
+  /* Keep the nav links visible — just compact them so the design still
+     reads as a navbar instead of vanishing entirely on phones. */
+  .nav-links {
+    gap: 14px;
+    font-size: 13px;
+  }
+  .brand {
+    font-size: 15px;
+  }
+  .brand img {
+    width: 24px;
+    height: 24px;
+  }
+  .hero {
+    padding: 56px 0 36px;
+  }
+  .hero p {
+    font-size: 15px;
+  }
+  .hero-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  .hero-actions .btn {
+    width: 100%;
+  }
+  section {
+    padding: 48px 0;
+  }
+  .section-title {
+    margin-bottom: 36px;
+  }
+  .panel {
+    padding: 22px;
+    border-radius: 16px;
+  }
+  .grid {
+    gap: 12px;
+  }
+  .card {
+    padding: 20px;
+  }
+  .notice-banner {
+    margin-bottom: 36px;
+    padding: 14px 16px;
+    font-size: 14px;
+  }
+  .footer-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .footer-links a {
+    margin-left: 0;
+  }
+  .prose h1 {
+    font-size: 28px;
+  }
+  .prose h2 {
+    font-size: 20px;
+    margin-top: 36px;
+  }
+}
+
+@media (max-width: 460px) {
+  .nav-links {
+    display: none;
+  }
+  .nav-menu-btn {
+    display: inline-flex;
+  }
+  .hero h1 {
+    font-size: 30px;
+    line-height: 1.1;
+  }
+  .container {
+    padding: 0 16px;
   }
 }
