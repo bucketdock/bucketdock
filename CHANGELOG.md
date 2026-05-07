@@ -35,6 +35,13 @@
   hero buttons stack full-width, and added a 460px breakpoint for very
   narrow phones.
 
+## [0.1.11](https://github.com/bucketdock/bucketdock/compare/v0.1.10...v0.1.11) (2026-05-07)
+
+
+### Features
+
+* remove website and move to separate repository ([a1dbd73](https://github.com/bucketdock/bucketdock/commit/a1dbd73c5625b504ef5a2eaba799cf35dc16abac))
+
 ## [0.1.10](https://github.com/bucketdock/bucketdock/compare/v0.1.9...v0.1.10) (2026-05-06)
 
 
