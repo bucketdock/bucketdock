@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.11](https://github.com/bucketdock/bucketdock/compare/v0.1.10...v0.1.11) (2026-05-10)
+
+
+### Features
+
+* add move button, move breadcrumb to bottom, imprpve object browser ([906ea06](https://github.com/bucketdock/bucketdock/commit/906ea06e4b59724661cafc479d71e8dac86f2f0d))
+* remove website and move to separate repository ([a1dbd73](https://github.com/bucketdock/bucketdock/commit/a1dbd73c5625b504ef5a2eaba799cf35dc16abac))
+
+
+### Bug Fixes
+
+* fix tests ([0457a7c](https://github.com/bucketdock/bucketdock/commit/0457a7c577e048955ca14e58f637fc3a9582ac40))
+
 ## [0.1.10](https://github.com/bucketdock/bucketdock/compare/v0.1.9...v0.1.10) (2026-05-06)
 
 ### Bug Fixes
