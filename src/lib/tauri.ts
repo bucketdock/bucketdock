@@ -190,6 +190,20 @@ export function uploadFolder(
 ): Promise<[number, number]> {
   return call("upload_folder", { connectionId, bucket, prefix, localDir });
 }
+
+/**
+ * Recursively enumerate every regular file under a local directory. Used by
+ * the folder upload flow to fan out into the per-file transfer queue so each
+ * file gets its own progress row.
+ */
+export interface LocalFileEntry {
+  absolute_path: string;
+  relative_path: string;
+  size: number;
+}
+export function walkLocalFiles(localDir: string): Promise<LocalFileEntry[]> {
+  return call("walk_local_files", { localDir });
+}
 export function downloadFolder(
   connectionId: string,
   bucket: string,

@@ -215,6 +215,12 @@ export default function ConnectionsSidebar() {
                   onClick={() => handleConnectionClick(conn.id)}
                   onContextMenu={(e) => handleContextMenu(e, conn)}
                 >
+                  {isSelected && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r bg-[#007AFF]"
+                    />
+                  )}
                   <ProviderIcon provider={conn.provider} />
                   <span className="flex-1 truncate">{conn.name}</span>
                   <button
@@ -251,20 +257,39 @@ export default function ConnectionsSidebar() {
                           No buckets found
                         </div>
                       ) : (
-                        filteredBuckets.map((b) => (
-                          <button
-                            key={b.name}
-                            className={cn(
-                              "w-full flex items-center gap-2 px-3 py-1.5 pl-8 text-xs text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors",
-                              selectedBucket === b.name &&
-                                "bg-[#007AFF]/8 dark:bg-[#007AFF]/15 text-[#007AFF] font-medium",
-                            )}
-                            onClick={() => handleBucketClick(b.name)}
-                          >
-                            <HardDrive className="w-3 h-3 shrink-0 opacity-60" />
-                            <span className="flex-1 truncate">{b.name}</span>
-                          </button>
-                        ))
+                        filteredBuckets.map((b) => {
+                          const isOpen = selectedBucket === b.name;
+                          return (
+                            <button
+                              key={b.name}
+                              className={cn(
+                                "relative w-full flex items-center gap-2 px-3 py-1.5 pl-8 text-xs text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors",
+                                isOpen &&
+                                  "bg-[#007AFF]/12 dark:bg-[#007AFF]/20 text-[#007AFF] font-medium",
+                              )}
+                              onClick={() => handleBucketClick(b.name)}
+                              aria-current={isOpen ? "page" : undefined}
+                              data-testid={`sidebar-bucket-${b.name}`}
+                            >
+                              {/* Accent rail on the left mirrors macOS source-list
+                                  selection — makes the "currently open" bucket
+                                  unmistakable even when the row tint is subtle. */}
+                              {isOpen && (
+                                <span
+                                  aria-hidden="true"
+                                  className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r bg-[#007AFF]"
+                                />
+                              )}
+                              <HardDrive
+                                className={cn(
+                                  "w-3 h-3 shrink-0",
+                                  isOpen ? "opacity-100" : "opacity-60",
+                                )}
+                              />
+                              <span className="flex-1 truncate">{b.name}</span>
+                            </button>
+                          );
+                        })
                       )
                     ) : null}
                   </div>

@@ -272,3 +272,47 @@ pub async fn head_object_content_types(
 
     Ok(results.into_iter().collect())
 }
+
+/// Recursively enumerate every regular file under `local_dir` so the
+/// frontend can enqueue each one as an individual upload (with progress
+/// reported through the transfer queue). Returns the absolute path,
+/// forward-slash relative path (the suffix to append to the destination
+/// prefix) and size in bytes for every file. Symlinks and directories
+/// themselves are not yielded.
+#[tauri::command]
+pub async fn walk_local_files(local_dir: String) -> Result<Vec<LocalFileEntry>> {
+    use walkdir::WalkDir;
+
+    let root = std::path::PathBuf::from(&local_dir);
+    let entries = tokio::task::spawn_blocking(move || -> Result<Vec<LocalFileEntry>> {
+        let mut out = Vec::new();
+        for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let abs = entry.path().to_path_buf();
+            let rel = abs
+                .strip_prefix(&root)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            let size = abs.metadata().map(|m| m.len()).unwrap_or(0);
+            out.push(LocalFileEntry {
+                absolute_path: abs.to_string_lossy().into_owned(),
+                relative_path: rel,
+                size,
+            });
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| crate::error::Error::Other(e.to_string()))??;
+
+    Ok(entries)
+}
+
+#[derive(serde::Serialize)]
+pub struct LocalFileEntry {
+    pub absolute_path: String,
+    pub relative_path: String,
+    pub size: u64,
+}

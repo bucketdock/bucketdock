@@ -52,6 +52,75 @@ body {
   overscroll-behavior: contain;
 }
 
+/* macOS-style checkbox.
+   Native unchecked checkboxes render bright white on macOS, which screams
+   against the soft, translucent BucketDock chrome. We render our own:
+   a softly tinted gray box when unchecked, the system accent (#007AFF)
+   when checked, with a crisp Sora-style check mark. The :indeterminate
+   state mirrors macOS Finder's "—" mark for the select-all header.
+   The control is purely CSS so it stays accessible and clickable
+   without any extra JS. */
+.checkbox-mac {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border-radius: 4px;
+  border: 1px solid oklch(0 0 0 / 0.18);
+  background-color: oklch(0 0 0 / 0.06);
+  display: inline-block;
+  position: relative;
+  cursor: pointer;
+  flex: none;
+  transition:
+    background-color 120ms,
+    border-color 120ms;
+}
+.checkbox-mac:hover {
+  background-color: oklch(0 0 0 / 0.1);
+}
+.checkbox-mac:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.checkbox-mac:checked,
+.checkbox-mac:indeterminate {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+.checkbox-mac:checked::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 6px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 1.6px 1.6px 0;
+  transform: rotate(45deg);
+}
+.checkbox-mac:indeterminate::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  height: 1.6px;
+  background: white;
+  transform: translateY(-50%);
+  border-radius: 1px;
+}
+@media (prefers-color-scheme: dark) {
+  .checkbox-mac {
+    border-color: oklch(1 0 0 / 0.18);
+    background-color: oklch(1 0 0 / 0.06);
+  }
+  .checkbox-mac:hover {
+    background-color: oklch(1 0 0 / 0.1);
+  }
+}
+
 /* Draggable titlebar regions */
 .titlebar-drag {
   -webkit-app-region: drag;

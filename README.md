@@ -41,7 +41,7 @@ Official signed and notarized builds are planned later.
 
 - Bucket sidebar per connection
 - Folder-like navigation over object prefixes
-- Breadcrumb navigation
+- Folder rows have a Finder-style disclosure triangle (>) that expands the folder inline and lists its children indented under the parent — without navigating into the folder
 - Multi-select in the current listing
 - Context menus for common actions
 - Empty states and loading skeletons
@@ -71,6 +71,12 @@ Official signed and notarized builds are planned later.
 - Inline preview for images, audio, video, PDFs, and text files
 - Copy files between buckets, including across different connections and providers
 - Copy whole folders between buckets (recursive multi-file copy)
+- Move files and folders between buckets (copy-then-delete-source, where each
+  source is removed only after its own copy completes — partial / failed /
+  cancelled transfers leave the source untouched)
+- Copy / Move destination picker with a folder tree, lazy-expanded children
+  on click, and an inline "New Folder" action so you can carve out a fresh
+  destination without leaving the dialog
 
 ### Transfer Queue
 
@@ -160,60 +166,6 @@ com.bucketdock.app
 ```
 
 If a connection was created before native Keychain persistence was enabled, edit that connection, enter the Secret Access Key again, and save it once so the secret is written into the macOS Keychain.
-
-## Repository Layout
-
-```text
-bucketdock/
-├── src/
-│   ├── app/                    # Next.js app router entrypoints and global styles
-│   ├── components/             # Desktop UI, browser, forms, modals, primitives
-│   ├── lib/                    # Tauri bridge helpers and shared utilities
-│   └── store/                  # Zustand app state
-├── src-tauri/
-│   ├── src/
-│   │   ├── commands_conns.rs   # Connection management commands
-│   │   ├── commands_s3.rs      # Bucket and object commands
-│   │   ├── commands_transfers.rs # Tracked transfer commands (queue + cancel)
-│   │   ├── connections.rs      # Metadata persistence and Keychain helpers
-│   │   ├── s3.rs               # AWS SDK client setup and S3 operations
-│   │   ├── state.rs            # Shared Tauri app state
-│   │   └── lib.rs              # Tauri bootstrap and command registration
-│   ├── Cargo.toml
-│   └── tauri.conf.json
-├── next.config.ts
-├── package.json
-└── README.md
-```
-
-## Tech Stack
-
-### Frontend
-
-- Next.js 16
-- React 19
-- TypeScript
-- Tailwind CSS 4
-- Zustand
-- Sonner
-- Lucide React
-
-### Desktop Shell
-
-- Tauri 2
-- tauri-plugin-dialog
-- tauri-plugin-opener
-- tauri-plugin-log
-
-### Backend
-
-- Rust
-- aws-config
-- aws-sdk-s3
-- tokio
-- keyring
-- chrono
-- walkdir
 
 ## Development
 

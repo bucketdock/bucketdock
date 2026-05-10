@@ -4,23 +4,24 @@ import * as React from "react";
 import {
   RotateCw,
   FolderPlus,
-  Upload,
   Download,
   Trash2,
   Folder,
   File as FileIcon,
   ChevronRight,
+  ChevronLeft,
   Pencil,
   ExternalLink,
-  ChevronDown,
   Info,
   ArrowRightLeft,
+  MoveRight,
   Search,
   MoreHorizontal,
   Eye,
   Tag,
   ArrowUp,
   ArrowDown,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow, isThisYear } from "date-fns";
@@ -34,10 +35,10 @@ import {
   renamePrefix,
   getPresignedUrl,
   isTauri,
-  uploadFolder,
   downloadFolder,
   deletePrefix,
   headObjectContentTypes,
+  walkLocalFiles,
   type ObjectInfo,
 } from "@/lib/tauri";
 import { useAppStore } from "@/store/app-store";
@@ -45,7 +46,12 @@ import { useTransfersStore } from "@/store/transfers-store";
 import { fileExtension, s3DefaultContentType } from "@/lib/mime";
 import CopyToModal from "@/components/copy-to-modal";
 import BucketsPane from "@/components/buckets-pane";
+import { UploadSplitButton } from "@/components/upload-split-button";
 import { Button } from "@/components/ui/button";
+import {
+  OverflowToolbar,
+  type OverflowItem,
+} from "@/components/ui/overflow-toolbar";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -78,6 +84,17 @@ function shortDate(d: Date): string {
   return isThisYear(d) ? format(d, "MMM d, HH:mm") : format(d, "yyyy-MM-dd");
 }
 
+/**
+ * Folder display name (no trailing slash) relative to a parent prefix.
+ * Used by both the path bar and the folder rows so they stay in sync.
+ */
+export function folderDisplayName(
+  folderKey: string,
+  parentPrefix: string,
+): string {
+  return folderKey.slice(parentPrefix.length).replace(/\/$/, "");
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ListingState {
@@ -91,7 +108,7 @@ type ModalState =
   | { type: "delete"; keys: string[] }
   | { type: "rename"; key: string; isFolder: boolean; currentName: string }
   | { type: "newFolder" }
-  | { type: "copyTo"; keys: string[] }
+  | { type: "copyTo"; keys: string[]; mode: "copy" | "move" }
   | null;
 
 type SortKey = "name" | "type" | "storage" | "size" | "modified";
@@ -160,6 +177,10 @@ export default function ObjectBrowser() {
     setPrefix,
     navigateInto,
     navigateToBreadcrumb,
+    back,
+    forward,
+    goBack,
+    goForward,
   } = useAppStore();
 
   const [listing, setListing] = React.useState<ListingState>({
@@ -177,7 +198,6 @@ export default function ObjectBrowser() {
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [renameValue, setRenameValue] = React.useState("");
   const [newFolderValue, setNewFolderValue] = React.useState("");
-  const [uploadMenuOpen, setUploadMenuOpen] = React.useState(false);
   const [infoKey, setInfoKey] = React.useState<string | null>(null);
   const [editHeadersKey, setEditHeadersKey] = React.useState<string | null>(
     null,
@@ -195,18 +215,82 @@ export default function ObjectBrowser() {
     Record<string, string | null>
   >({});
 
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const uploadMenuRef = React.useRef<HTMLDivElement>(null);
-
+  // ── Disclosure-triangle state ──────────────────────────────────────────────
+  // Folder key (with trailing slash) -> child listing. Mirrors the Finder
+  // list-view behaviour where clicking the disclosure triangle reveals the
+  // folder's contents inline, indented under the row, without navigating.
+  // Cleared whenever the bucket / prefix changes so we never display stale
+  // children for a folder that no longer exists in the current view.
+  type ChildListing = {
+    folders: string[];
+    files: ObjectInfo[];
+    loading: boolean;
+    error: string | null;
+  };
+  const [expanded, setExpanded] = React.useState<Record<string, ChildListing>>(
+    {},
+  );
   React.useEffect(() => {
-    if (!uploadMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!uploadMenuRef.current?.contains(e.target as Node))
-        setUploadMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [uploadMenuOpen]);
+    // Collapse everything on listing context change. Without this, switching
+    // buckets while folders were expanded would briefly render orphan rows.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset on context change
+    setExpanded({});
+  }, [connId, bucket, prefix]);
+
+  const toggleExpand = React.useCallback(
+    async (folderKey: string) => {
+      if (!connId || !bucket) return;
+      // Collapse if already open.
+      if (expanded[folderKey]) {
+        setExpanded((prev) => {
+          const next = { ...prev };
+          delete next[folderKey];
+          return next;
+        });
+        return;
+      }
+      setExpanded((prev) => ({
+        ...prev,
+        [folderKey]: { folders: [], files: [], loading: true, error: null },
+      }));
+      try {
+        const page = await listObjects(connId, bucket, folderKey);
+        setExpanded((prev) => {
+          // Folder may have been collapsed (or context changed) while the
+          // request was in flight; only commit if our slot is still loading.
+          const slot = prev[folderKey];
+          if (!slot || !slot.loading) return prev;
+          return {
+            ...prev,
+            [folderKey]: {
+              folders: page.folders,
+              files: page.files,
+              loading: false,
+              error: null,
+            },
+          };
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setExpanded((prev) => {
+          const slot = prev[folderKey];
+          if (!slot || !slot.loading) return prev;
+          return {
+            ...prev,
+            [folderKey]: {
+              folders: [],
+              files: [],
+              loading: false,
+              error: msg,
+            },
+          };
+        });
+      }
+    },
+    [connId, bucket, expanded],
+  );
+
+  const containerRef = React.useRef<HTMLDivElement>(null);
 
   // Stable refs so async callbacks always see current values
   const connIdRef = React.useRef(connId);
@@ -473,6 +557,14 @@ export default function ObjectBrowser() {
     } else if ((e.metaKey || e.ctrlKey) && e.key === "a") {
       e.preventDefault();
       setSelection(new Set(allKeys));
+    } else if ((e.metaKey || e.ctrlKey) && e.key === "[") {
+      // macOS Finder: ⌘[ goes back in history.
+      e.preventDefault();
+      if (back.length > 0) goBack();
+    } else if ((e.metaKey || e.ctrlKey) && e.key === "]") {
+      // macOS Finder: ⌘] goes forward in history.
+      e.preventDefault();
+      if (forward.length > 0) goForward();
     } else if ((e.metaKey || e.ctrlKey) && e.key === "i") {
       e.preventDefault();
       const selectedKeys = [...selection];
@@ -516,23 +608,38 @@ export default function ObjectBrowser() {
     const dirPath = dir as string;
     const folderName = dirPath.split("/").pop() ?? "folder";
     const folderPrefix = prefix + folderName + "/";
-    const toastId = toast.loading(`Uploading folder "${folderName}"…`);
+
+    // Walk the folder so each file becomes its own queued upload with
+    // per-file progress, instead of a single opaque "uploading folder…"
+    // toast that hides what's happening.
+    let entries;
     try {
-      const [fileCount, totalBytes] = await uploadFolder(
-        connId,
-        bucket,
-        folderPrefix,
-        dirPath,
-      );
-      toast.dismiss(toastId);
-      toast.success(
-        `Uploaded ${fileCount} file(s) (${formatSize(totalBytes)})`,
-      );
-      fetchListing();
+      entries = await walkLocalFiles(dirPath);
     } catch (err) {
-      toast.dismiss(toastId);
-      toast.error(`Upload failed: ${err}`);
+      toast.error(`Could not read folder: ${err}`);
+      return;
     }
+    if (entries.length === 0) {
+      toast.message(`"${folderName}" has no files to upload`);
+      return;
+    }
+    const enqueueUpload = useTransfersStore.getState().enqueueUpload;
+    for (const entry of entries) {
+      const key = folderPrefix + entry.relative_path;
+      enqueueUpload({
+        connectionId: connId,
+        bucket,
+        key,
+        localPath: entry.absolute_path,
+        name: entry.relative_path || folderName,
+        subtitle: `${bucket}/${key}`,
+        total: entry.size,
+      });
+    }
+    toast.success(
+      `Queued ${entries.length} file${entries.length === 1 ? "" : "s"} from "${folderName}"`,
+    );
+    fetchListing();
   };
 
   // ── Native menu actions ────────────────────────────────────────────────────
@@ -837,7 +944,15 @@ export default function ObjectBrowser() {
     items.push({
       label: applyToSelection ? `Copy ${targets.length} to…` : "Copy to…",
       icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
-      onClick: () => setModal({ type: "copyTo", keys: targets }),
+      onClick: () => setModal({ type: "copyTo", keys: targets, mode: "copy" }),
+    });
+
+    // Move = copy + delete-source on success. The CopyToModal handles the
+    // distinction via its `mode` prop.
+    items.push({
+      label: applyToSelection ? `Move ${targets.length} to…` : "Move to…",
+      icon: <MoveRight className="w-3.5 h-3.5" />,
+      onClick: () => setModal({ type: "copyTo", keys: targets, mode: "move" }),
     });
 
     if (!applyToSelection) {
@@ -910,11 +1025,450 @@ export default function ObjectBrowser() {
   // ── Breadcrumbs ────────────────────────────────────────────────────────────
 
   const breadcrumbSegments = prefix ? prefix.replace(/\/$/, "").split("/") : [];
+  const currentFolderName =
+    breadcrumbSegments.length === 0
+      ? bucket
+      : breadcrumbSegments[breadcrumbSegments.length - 1];
   const hasSelection = selection.size > 0;
   const allChecked = allKeys.length > 0 && selection.size === allKeys.length;
   const someChecked = selection.size > 0 && selection.size < allKeys.length;
   const singleSelectedIsFile =
     selection.size === 1 && !listing.folders.includes([...selection][0]);
+  const canBack = back.length > 0;
+  const canForward = forward.length > 0;
+
+  // ── Row renderers ──────────────────────────────────────────────────────────
+  // Both folder and file rows accept a `depth` so that the children of an
+  // expanded folder can be rendered indented under their parent — matching
+  // the disclosure-triangle behaviour of Finder's list view. Depth 0 is the
+  // current `prefix`; each nested level adds 16px of name-cell indent.
+
+  const indentPx = (depth: number) => ({ paddingLeft: `${depth * 16}px` });
+
+  const renderFolderRow = (
+    folder: string,
+    parentPrefix: string,
+    depth: number,
+  ) => {
+    const displayName = folderDisplayName(folder, parentPrefix);
+    const isSelected = selection.has(folder);
+    const child = expanded[folder];
+    const isOpen = !!child;
+    return (
+      <React.Fragment key={folder}>
+        <tr
+          onClick={(e) => toggleSelect(folder, e)}
+          onDoubleClick={() => navigateInto(folder.slice(prefix.length))}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu({
+              position: { x: e.clientX, y: e.clientY },
+              key: folder,
+              isFolder: true,
+            });
+          }}
+          className={cn(
+            // Slightly lighter than the page background so rows pop in dark
+            // mode and don't read as a flat dark-gray block.
+            "border-b border-black/4 dark:border-white/6 dark:bg-white/3 cursor-pointer select-none",
+            "hover:bg-black/4 dark:hover:bg-white/7",
+            isSelected && "bg-blue-50 dark:bg-blue-500/15",
+          )}
+          data-testid={`folder-row-${folder}`}
+        >
+          <td
+            className="px-3 py-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleCheckbox(folder);
+            }}
+          >
+            <input
+              type="checkbox"
+              className="checkbox-mac pointer-events-none"
+              checked={isSelected}
+              readOnly
+            />
+          </td>
+          <td className="px-3 py-1">
+            <div className="flex items-center gap-1" style={indentPx(depth)}>
+              {/*
+                Disclosure triangle — Finder list-view style. Sits at the
+                start of the Name cell (immediately after the checkbox
+                column) so nested children align cleanly under their
+                parent. Click toggles inline expansion without navigating.
+              */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleExpand(folder);
+                }}
+                className={cn(
+                  "p-0.5 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-transform shrink-0",
+                  isOpen && "rotate-90",
+                )}
+                aria-label={
+                  isOpen ? `Collapse ${displayName}` : `Expand ${displayName}`
+                }
+                aria-expanded={isOpen}
+                title={isOpen ? "Collapse" : "Expand"}
+                data-testid={`disclosure-${folder}`}
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <Folder className="w-4 h-4 text-yellow-500 shrink-0 ml-0.5" />
+              <span className="truncate">{displayName}</span>
+            </div>
+          </td>
+          <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500">
+            Folder
+          </td>
+          <td className="px-3 py-1 text-neutral-400">—</td>
+          <td className="px-3 py-1 text-right text-neutral-400">—</td>
+          <td className="px-3 py-1 text-right text-neutral-400">—</td>
+          <td className="px-1.5 py-1 text-right">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                const r = (
+                  e.currentTarget as HTMLElement
+                ).getBoundingClientRect();
+                setContextMenu({
+                  position: { x: r.right, y: r.bottom },
+                  key: folder,
+                  isFolder: true,
+                });
+              }}
+              className="p-1 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-500"
+              aria-label="Actions"
+              title="Actions"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
+          </td>
+        </tr>
+        {isOpen && child && renderChildren(folder, child, depth + 1)}
+      </React.Fragment>
+    );
+  };
+
+  const renderFileRow = (
+    file: ObjectInfo,
+    parentPrefix: string,
+    depth: number,
+  ) => {
+    const displayName = file.key.slice(parentPrefix.length);
+    const isSelected = selection.has(file.key);
+    const modDate = file.last_modified ? new Date(file.last_modified) : null;
+    const ctEntry = contentTypes[file.key];
+    const typeLabel =
+      ctEntry === undefined
+        ? s3DefaultContentType(file.key)
+        : (ctEntry ?? s3DefaultContentType(file.key));
+    return (
+      <tr
+        key={file.key}
+        onClick={(e) => toggleSelect(file.key, e)}
+        onDoubleClick={() => setPreviewKey(file.key)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({
+            position: { x: e.clientX, y: e.clientY },
+            key: file.key,
+            isFolder: false,
+          });
+        }}
+        className={cn(
+          "border-b border-black/4 dark:border-white/6 dark:bg-white/3 cursor-pointer select-none",
+          "hover:bg-black/4 dark:hover:bg-white/7",
+          isSelected && "bg-blue-50 dark:bg-blue-500/15",
+        )}
+      >
+        <td
+          className="px-3 py-1"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleCheckbox(file.key);
+          }}
+        >
+          <input
+            type="checkbox"
+            className="checkbox-mac pointer-events-none"
+            checked={isSelected}
+            readOnly
+          />
+        </td>
+        <td className="px-3 py-1">
+          <div className="flex items-center gap-2" style={indentPx(depth)}>
+            {/* Spacer keeps file names aligned with folder names that have
+                a disclosure triangle to their left. */}
+            <span className="w-4 shrink-0" aria-hidden="true" />
+            <FileIcon className="w-4 h-4 text-neutral-400 shrink-0" />
+            <span className="truncate">{displayName}</span>
+          </div>
+        </td>
+        <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 truncate">
+          {typeLabel}
+        </td>
+        <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 truncate">
+          {file.storage_class ?? <span className="text-neutral-400">—</span>}
+        </td>
+        <td className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums">
+          {formatSize(file.size)}
+        </td>
+        <td className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums">
+          {modDate ? (
+            <Tooltip
+              content={`${format(modDate, "yyyy-MM-dd HH:mm:ss")} · ${formatDistanceToNow(modDate, { addSuffix: true })}`}
+              side="left"
+            >
+              <span>{shortDate(modDate)}</span>
+            </Tooltip>
+          ) : (
+            <span className="text-neutral-400">—</span>
+          )}
+        </td>
+        <td className="px-1.5 py-1 text-right">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const r = (
+                e.currentTarget as HTMLElement
+              ).getBoundingClientRect();
+              setContextMenu({
+                position: { x: r.right, y: r.bottom },
+                key: file.key,
+                isFolder: false,
+              });
+            }}
+            className="p-1 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-500"
+            aria-label="Actions"
+            title="Actions"
+          >
+            <MoreHorizontal className="w-3.5 h-3.5" />
+          </button>
+        </td>
+      </tr>
+    );
+  };
+
+  /**
+   * Renders the rows for a folder's expanded children. Mirrors the parent
+   * layout (folders first, then files) and propagates the depth so deeper
+   * nesting compounds the indentation. Errors and loading states each get
+   * a single placeholder row that occupies the table width.
+   */
+  const renderChildren = (
+    parentFolder: string,
+    listing: ChildListing,
+    depth: number,
+  ): React.ReactNode => {
+    if (listing.loading) {
+      return (
+        <tr key={`${parentFolder}-loading`} aria-live="polite">
+          <td className="px-3 py-1" />
+          <td className="px-3 py-1" colSpan={6}>
+            <div
+              className="flex items-center gap-2 text-xs text-neutral-500"
+              style={indentPx(depth)}
+            >
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
+            </div>
+          </td>
+        </tr>
+      );
+    }
+    if (listing.error) {
+      return (
+        <tr key={`${parentFolder}-error`}>
+          <td className="px-3 py-1" />
+          <td className="px-3 py-1 text-xs text-red-500" colSpan={6}>
+            <div style={indentPx(depth)}>{listing.error}</div>
+          </td>
+        </tr>
+      );
+    }
+    if (listing.folders.length === 0 && listing.files.length === 0) {
+      return (
+        <tr key={`${parentFolder}-empty`}>
+          <td className="px-3 py-1" />
+          <td className="px-3 py-1 text-xs text-neutral-400 italic" colSpan={6}>
+            <div style={indentPx(depth)}>Empty</div>
+          </td>
+        </tr>
+      );
+    }
+    return (
+      <>
+        {listing.folders.map((f) => renderFolderRow(f, parentFolder, depth))}
+        {listing.files.map((f) => renderFileRow(f, parentFolder, depth))}
+      </>
+    );
+  };
+
+  // ── Toolbar items ──────────────────────────────────────────────────────────
+  // Defined declaratively so the OverflowToolbar can promote any of them
+  // into the "…" overflow menu when the window is narrow. `priority`
+  // controls drop order: lower = collapses first. The Filter input, the
+  // primary Upload action, the selection-count badge and Refresh live
+  // outside the OverflowToolbar entirely so they always stay visible.
+  const singleSelectedKey = selection.size === 1 ? [...selection][0] : null;
+  const toolbarItems: OverflowItem[] = [];
+  if (hasSelection && selection.size === 1 && singleSelectedIsFile) {
+    toolbarItems.push({
+      key: "preview",
+      priority: 30,
+      render: () => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setPreviewKey([...selection][0])}
+        >
+          <Eye className="w-3.5 h-3.5" />
+          Preview
+        </Button>
+      ),
+      menu: {
+        label: "Preview",
+        icon: <Eye className="w-3.5 h-3.5" />,
+        onClick: () => singleSelectedKey && setPreviewKey(singleSelectedKey),
+      },
+    });
+  }
+  if (hasSelection) {
+    toolbarItems.push({
+      key: "download",
+      priority: 50,
+      render: () => (
+        <Button variant="ghost" size="sm" onClick={handleHeaderDownload}>
+          <Download className="w-3.5 h-3.5" />
+          Download
+        </Button>
+      ),
+      menu: {
+        label: "Download",
+        icon: <Download className="w-3.5 h-3.5" />,
+        onClick: handleHeaderDownload,
+      },
+    });
+    toolbarItems.push({
+      key: "copy",
+      priority: 40,
+      render: () => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            setModal({ type: "copyTo", keys: [...selection], mode: "copy" })
+          }
+          title="Copy to another bucket"
+        >
+          <ArrowRightLeft className="w-3.5 h-3.5" />
+          Copy to…
+        </Button>
+      ),
+      menu: {
+        label: "Copy to…",
+        icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
+        onClick: () =>
+          setModal({ type: "copyTo", keys: [...selection], mode: "copy" }),
+      },
+    });
+    toolbarItems.push({
+      key: "move",
+      priority: 35,
+      render: () => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            setModal({ type: "copyTo", keys: [...selection], mode: "move" })
+          }
+          title="Move to another bucket or folder"
+        >
+          <MoveRight className="w-3.5 h-3.5" />
+          Move to…
+        </Button>
+      ),
+      menu: {
+        label: "Move to…",
+        icon: <MoveRight className="w-3.5 h-3.5" />,
+        onClick: () =>
+          setModal({ type: "copyTo", keys: [...selection], mode: "move" }),
+      },
+    });
+  }
+  if (hasSelection && selection.size === 1 && singleSelectedIsFile) {
+    toolbarItems.push({
+      key: "info",
+      priority: 20,
+      render: () => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setInfoKey([...selection][0])}
+          title="Get info"
+        >
+          <Info className="w-3.5 h-3.5" />
+          Info
+        </Button>
+      ),
+      menu: {
+        label: "Get Info…",
+        icon: <Info className="w-3.5 h-3.5" />,
+        onClick: () => singleSelectedKey && setInfoKey(singleSelectedKey),
+      },
+    });
+    toolbarItems.push({
+      key: "headers",
+      priority: 10,
+      render: () => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setEditHeadersKey([...selection][0])}
+          title="Edit headers and user metadata"
+        >
+          <Tag className="w-3.5 h-3.5" />
+          Headers
+        </Button>
+      ),
+      menu: {
+        label: "Edit Headers…",
+        icon: <Tag className="w-3.5 h-3.5" />,
+        onClick: () =>
+          singleSelectedKey && setEditHeadersKey(singleSelectedKey),
+      },
+    });
+  }
+  toolbarItems.push({
+    key: "new-folder",
+    priority: 60,
+    render: () => (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setNewFolderValue("");
+          setModal({ type: "newFolder" });
+        }}
+      >
+        <FolderPlus className="w-3.5 h-3.5" />
+        New Folder
+      </Button>
+    ),
+    menu: {
+      label: "New Folder",
+      icon: <FolderPlus className="w-3.5 h-3.5" />,
+      onClick: () => {
+        setNewFolderValue("");
+        setModal({ type: "newFolder" });
+      },
+    },
+  });
 
   return (
     <div
@@ -934,160 +1488,83 @@ export default function ObjectBrowser() {
         an explicit z on the toolbar the Upload dropdown would be painted
         beneath the table head.
       */}
-      <div className="relative z-20 flex items-center justify-between px-4 py-2 border-b border-black/8 dark:border-white/8 shrink-0 gap-3 min-h-[44px] flex-wrap">
-        {/* Breadcrumbs */}
-        <nav
-          className="flex items-center gap-0.5 min-w-0 overflow-hidden text-sm"
-          aria-label="Breadcrumb"
-        >
-          <button
-            onClick={() => setPrefix("")}
-            className={cn(
-              "shrink-0 px-1.5 py-0.5 rounded hover:bg-black/8 dark:hover:bg-white/8 transition-colors font-medium truncate max-w-[200px]",
-              breadcrumbSegments.length > 0 &&
-                "text-neutral-500 dark:text-neutral-400",
-            )}
+      <div className="relative z-20 flex items-center px-4 py-2 border-b border-black/8 dark:border-white/8 shrink-0 gap-3 min-h-[44px] flex-nowrap overflow-visible">
+        {/*
+          Finder-style navigation cluster: back/forward chevrons followed by
+          the current folder name. The full breadcrumb path lives in the
+          path bar at the bottom of the window, mirroring macOS Finder.
+        */}
+        <div className="flex items-center gap-2 min-w-0 shrink overflow-hidden">
+          <div
+            className="flex items-center gap-0.5 shrink-0"
+            role="group"
+            aria-label="History navigation"
           >
-            {bucket}
-          </button>
-          {breadcrumbSegments.map((seg, idx) => (
-            <React.Fragment key={idx}>
-              <ChevronRight
-                className="w-3.5 h-3.5 text-neutral-400 shrink-0"
-                aria-hidden="true"
-              />
-              <button
-                onClick={() => navigateToBreadcrumb(idx)}
-                className={cn(
-                  "px-1.5 py-0.5 rounded hover:bg-black/8 dark:hover:bg-white/8 transition-colors truncate max-w-[140px]",
-                  idx === breadcrumbSegments.length - 1
-                    ? "font-medium"
-                    : "text-neutral-500 dark:text-neutral-400",
-                )}
-              >
-                {seg}
-              </button>
-            </React.Fragment>
-          ))}
-        </nav>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goBack}
+              disabled={!canBack}
+              aria-label="Back"
+              title="Back (⌘[)"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goForward}
+              disabled={!canForward}
+              aria-label="Forward"
+              title="Forward (⌘])"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+          <h2
+            className="text-[13px] font-semibold truncate"
+            data-testid="current-folder-name"
+            title={currentFolderName ?? ""}
+          >
+            {currentFolderName}
+          </h2>
+        </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Search */}
-          <div className="relative">
+        {/*
+          Right cluster — keep only a few primary controls always visible:
+            • Selection count
+            • Overflow "…" menu for all secondary actions
+            • Filter input
+            • Upload
+            • Refresh
+        */}
+        <div className="flex-1 min-w-0 flex items-center gap-2 flex-nowrap overflow-visible justify-end">
+          {hasSelection && (
+            <span
+              className="text-[11px] text-neutral-500 dark:text-neutral-400 select-none shrink-0"
+              data-testid="selection-count"
+            >
+              {selection.size} selected
+            </span>
+          )}
+          <OverflowToolbar
+            items={toolbarItems}
+            className="w-8 flex-none overflow-visible"
+          />
+          <div className="relative shrink-0">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filter…"
-              className="pl-7 h-7 w-40 text-xs"
+              className="pl-7 h-7 w-36 text-xs"
               aria-label="Filter"
             />
           </div>
-
-          {hasSelection && (
-            <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
-              {selection.size} selected
-            </span>
-          )}
-          {hasSelection && selection.size === 1 && singleSelectedIsFile && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPreviewKey([...selection][0])}
-            >
-              <Eye className="w-3.5 h-3.5" />
-              Preview
-            </Button>
-          )}
-          {hasSelection && (
-            <Button variant="ghost" size="sm" onClick={handleHeaderDownload}>
-              <Download className="w-3.5 h-3.5" />
-              Download
-            </Button>
-          )}
-          {hasSelection && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setModal({ type: "copyTo", keys: [...selection] })}
-              title="Copy to another bucket"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              Copy to…
-            </Button>
-          )}
-          {hasSelection && selection.size === 1 && singleSelectedIsFile && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setInfoKey([...selection][0])}
-              title="Get info"
-            >
-              <Info className="w-3.5 h-3.5" />
-              Info
-            </Button>
-          )}
-          {hasSelection && selection.size === 1 && singleSelectedIsFile && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditHeadersKey([...selection][0])}
-              title="Edit headers and user metadata"
-            >
-              <Tag className="w-3.5 h-3.5" />
-              Headers
-            </Button>
-          )}
-          {/*
-            Delete is intentionally not in the top toolbar — it lives in the
-            per-row "…" menu and the right-click context menu so users can't
-            wipe a multi-selection by reflex. Refresh moved to the very end.
-          */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setNewFolderValue("");
-              setModal({ type: "newFolder" });
-            }}
-          >
-            <FolderPlus className="w-3.5 h-3.5" />
-            New Folder
-          </Button>
-          <div className="relative" ref={uploadMenuRef}>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => setUploadMenuOpen((v) => !v)}
-            >
-              <Upload className="w-3.5 h-3.5" />
-              Upload
-              <ChevronDown className="w-3 h-3 ml-0.5" />
-            </Button>
-            {uploadMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 z-60 min-w-35 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 shadow-lg py-1">
-                <button
-                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
-                  onClick={() => {
-                    setUploadMenuOpen(false);
-                    handleUpload();
-                  }}
-                >
-                  Files…
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
-                  onClick={() => {
-                    setUploadMenuOpen(false);
-                    handleUploadFolder();
-                  }}
-                >
-                  Folder…
-                </button>
-              </div>
-            )}
-          </div>
+          <UploadSplitButton
+            onUploadFiles={handleUpload}
+            onUploadFolder={handleUploadFolder}
+          />
           <Button
             variant="ghost"
             size="icon"
@@ -1105,7 +1582,7 @@ export default function ObjectBrowser() {
       {/* ── Body ── */}
       <div className="flex-1 min-h-0 overflow-auto">
         {listing.loading ? (
-          <table className="w-full text-sm">
+          <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-black/8 dark:border-white/8">
                 <th className="w-10 px-3 py-2" />
@@ -1131,7 +1608,7 @@ export default function ObjectBrowser() {
               {Array.from({ length: 6 }).map((_, i) => (
                 <tr
                   key={i}
-                  className="border-b border-black/4 dark:border-white/4"
+                  className="border-b border-black/4 dark:border-white/6"
                 >
                   <td className="px-3 py-1">
                     <Skeleton className="w-4 h-4" />
@@ -1174,13 +1651,13 @@ export default function ObjectBrowser() {
             />
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-[13px]">
             <thead className="sticky top-0 z-1 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm">
               <tr className="border-b border-black/8 dark:border-white/8">
                 <th className="w-10 px-3 py-2">
                   <input
                     type="checkbox"
-                    className="rounded accent-[#007AFF]"
+                    className="checkbox-mac"
                     checked={allChecked}
                     ref={(el) => {
                       if (el) el.indeterminate = someChecked;
@@ -1276,183 +1753,60 @@ export default function ObjectBrowser() {
               </tr>
             </thead>
             <tbody>
-              {visibleFolders.map((folder) => {
-                const displayName = folder
-                  .slice(prefix.length)
-                  .replace(/\/$/, "");
-                const isSelected = selection.has(folder);
-                return (
-                  <tr
-                    key={folder}
-                    onClick={(e) => toggleSelect(folder, e)}
-                    onDoubleClick={() =>
-                      navigateInto(folder.slice(prefix.length))
-                    }
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({
-                        position: { x: e.clientX, y: e.clientY },
-                        key: folder,
-                        isFolder: true,
-                      });
-                    }}
-                    className={cn(
-                      "border-b border-black/4 dark:border-white/4 cursor-pointer select-none",
-                      "hover:bg-black/4 dark:hover:bg-white/4",
-                      isSelected && "bg-blue-50 dark:bg-blue-900/20",
-                    )}
-                  >
-                    <td
-                      className="px-3 py-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleCheckbox(folder);
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        className="rounded accent-[#007AFF] pointer-events-none"
-                        checked={isSelected}
-                        readOnly
-                      />
-                    </td>
-                    <td className="px-3 py-1">
-                      <div className="flex items-center gap-2">
-                        <Folder className="w-4 h-4 text-yellow-500 shrink-0" />
-                        <span className="truncate">{displayName}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-1 text-neutral-500">Folder</td>
-                    <td className="px-3 py-1 text-neutral-400">—</td>
-                    <td className="px-3 py-1 text-right text-neutral-400">—</td>
-                    <td className="px-3 py-1 text-right text-neutral-400">—</td>
-                    <td className="px-1.5 py-1 text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const r = (
-                            e.currentTarget as HTMLElement
-                          ).getBoundingClientRect();
-                          setContextMenu({
-                            position: { x: r.right, y: r.bottom },
-                            key: folder,
-                            isFolder: true,
-                          });
-                        }}
-                        className="p-1 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-500"
-                        aria-label="Actions"
-                        title="Actions"
-                      >
-                        <MoreHorizontal className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {visibleFiles.map((file) => {
-                const displayName = file.key.slice(prefix.length);
-                const isSelected = selection.has(file.key);
-                const modDate = file.last_modified
-                  ? new Date(file.last_modified)
-                  : null;
-                // Real Content-Type once HEAD has resolved; placeholder
-                // until then so the column doesn't flicker.
-                const ctEntry = contentTypes[file.key];
-                const typeLabel =
-                  ctEntry === undefined
-                    ? s3DefaultContentType(file.key)
-                    : (ctEntry ?? s3DefaultContentType(file.key));
-                return (
-                  <tr
-                    key={file.key}
-                    onClick={(e) => toggleSelect(file.key, e)}
-                    onDoubleClick={() => setPreviewKey(file.key)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({
-                        position: { x: e.clientX, y: e.clientY },
-                        key: file.key,
-                        isFolder: false,
-                      });
-                    }}
-                    className={cn(
-                      "border-b border-black/4 dark:border-white/4 cursor-pointer select-none",
-                      "hover:bg-black/4 dark:hover:bg-white/4",
-                      isSelected && "bg-blue-50 dark:bg-blue-900/20",
-                    )}
-                  >
-                    <td
-                      className="px-3 py-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleCheckbox(file.key);
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        className="rounded accent-[#007AFF] pointer-events-none"
-                        checked={isSelected}
-                        readOnly
-                      />
-                    </td>
-                    <td className="px-3 py-1">
-                      <div className="flex items-center gap-2">
-                        <FileIcon className="w-4 h-4 text-neutral-400 shrink-0" />
-                        <span className="truncate">{displayName}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-1 text-neutral-500 truncate">
-                      {typeLabel}
-                    </td>
-                    <td className="px-3 py-1 text-neutral-500 truncate">
-                      {file.storage_class ?? (
-                        <span className="text-neutral-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-1 text-right text-neutral-500 tabular-nums">
-                      {formatSize(file.size)}
-                    </td>
-                    <td className="px-3 py-1 text-right text-neutral-500 tabular-nums">
-                      {modDate ? (
-                        <Tooltip
-                          content={`${format(modDate, "yyyy-MM-dd HH:mm:ss")} · ${formatDistanceToNow(modDate, { addSuffix: true })}`}
-                          side="left"
-                        >
-                          <span>{shortDate(modDate)}</span>
-                        </Tooltip>
-                      ) : (
-                        <span className="text-neutral-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-1.5 py-1 text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const r = (
-                            e.currentTarget as HTMLElement
-                          ).getBoundingClientRect();
-                          setContextMenu({
-                            position: { x: r.right, y: r.bottom },
-                            key: file.key,
-                            isFolder: false,
-                          });
-                        }}
-                        className="p-1 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-500"
-                        aria-label="Actions"
-                        title="Actions"
-                      >
-                        <MoreHorizontal className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {visibleFolders.map((folder) =>
+                renderFolderRow(folder, prefix, 0),
+              )}
+              {visibleFiles.map((file) => renderFileRow(file, prefix, 0))}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* ── Path bar (Finder-style) ── */}
+      {/*
+        Finder shows the full hierarchy as a clickable breadcrumb pinned to
+        the bottom of the window. We mirror that here so the top toolbar can
+        focus on history navigation and actions while the path bar stays
+        out of the way until it's needed.
+      */}
+      <nav
+        className="shrink-0 flex items-center gap-0.5 px-3 py-1.5 border-t border-black/8 dark:border-white/8 bg-black/3 dark:bg-white/3 text-xs overflow-x-auto"
+        aria-label="Path"
+        data-testid="path-bar"
+      >
+        <button
+          type="button"
+          onClick={() => setPrefix("")}
+          className={cn(
+            "shrink-0 px-1.5 py-0.5 rounded hover:bg-black/8 dark:hover:bg-white/8 transition-colors truncate max-w-[200px]",
+            breadcrumbSegments.length === 0
+              ? "font-medium text-neutral-700 dark:text-neutral-200"
+              : "text-neutral-500 dark:text-neutral-400",
+          )}
+        >
+          {bucket}
+        </button>
+        {breadcrumbSegments.map((seg, idx) => (
+          <React.Fragment key={idx}>
+            <ChevronRight
+              className="w-3 h-3 text-neutral-400 shrink-0"
+              aria-hidden="true"
+            />
+            <button
+              type="button"
+              onClick={() => navigateToBreadcrumb(idx)}
+              className={cn(
+                "px-1.5 py-0.5 rounded hover:bg-black/8 dark:hover:bg-white/8 transition-colors truncate max-w-[140px]",
+                idx === breadcrumbSegments.length - 1
+                  ? "font-medium text-neutral-700 dark:text-neutral-200"
+                  : "text-neutral-500 dark:text-neutral-400",
+              )}
+            >
+              {seg}
+            </button>
+          </React.Fragment>
+        ))}
+      </nav>
 
       {/* ── Context Menu ── */}
       {contextMenu && (
@@ -1622,7 +1976,7 @@ export default function ObjectBrowser() {
         />
       )}
 
-      {/* ── Copy To Modal ── */}
+      {/* ── Copy / Move Modal ── */}
       {connId && bucket && modal?.type === "copyTo" && (
         <CopyToModal
           open
@@ -1630,6 +1984,8 @@ export default function ObjectBrowser() {
           srcConnectionId={connId}
           srcBucket={bucket}
           keys={modal.keys}
+          mode={modal.mode}
+          onCompleted={() => fetchListing()}
         />
       )}
     </div>
