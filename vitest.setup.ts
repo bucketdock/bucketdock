@@ -9,6 +9,5 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     unobserve(): void {}
     disconnect(): void {}
   }
-  // @ts-expect-error -- attaching test-only shim to the global scope
   globalThis.ResizeObserver = ResizeObserverShim;
 }

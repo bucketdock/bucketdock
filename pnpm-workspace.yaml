@@ -1,6 +1,10 @@
 packages:
   - .
 
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
