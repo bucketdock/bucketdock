@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.12](https://github.com/bucketdock/bucketdock/compare/v0.1.11...v0.1.12) (2026-05-28)
+
+
+### Features
+
+* add filter to move/copy files, indicate when big/many files copied/moved ([43d0168](https://github.com/bucketdock/bucketdock/commit/43d0168b935920af1da7c0bafe299cda0ca70b1e))
+* add folder size calculation from conext menu, file/folder name resizing ([7bdd297](https://github.com/bucketdock/bucketdock/commit/7bdd2972a0c56b1a67eb1c30d700641bd91bb900))
+* add Hetzner to providers ([292ce07](https://github.com/bucketdock/bucketdock/commit/292ce07a8f4f00c373b5b14ff0bef971ac9b9a9b))
+
 ## [0.1.11](https://github.com/bucketdock/bucketdock/compare/v0.1.10...v0.1.11) (2026-05-10)
 
 
