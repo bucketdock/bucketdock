@@ -7,7 +7,7 @@ use crate::error::{Error, Result};
 pub struct Connection {
     pub id: String,
     pub name: String,
-    /// "aws" | "r2" | "custom"
+    /// "aws" | "r2" | "hetzner" | "custom"
     pub provider: String,
     pub endpoint: Option<String>,
     pub region: String,
@@ -189,15 +189,15 @@ pub fn validate_input(input: &ConnectionInput) -> Result<()> {
         return Err(Error::Other("Region is required.".into()));
     }
     match input.provider.as_str() {
-        "aws" | "r2" | "custom" => {}
+        "aws" | "r2" | "hetzner" | "custom" => {}
         other => {
             return Err(Error::Other(format!(
-                "Unknown provider '{}'. Use aws, r2 or custom.",
+                "Unknown provider '{}'. Use aws, r2, hetzner or custom.",
                 other
             )));
         }
     }
-    if matches!(input.provider.as_str(), "r2" | "custom") {
+    if matches!(input.provider.as_str(), "r2" | "hetzner" | "custom") {
         let ep = input.endpoint.as_deref().unwrap_or("").trim();
         if ep.is_empty() {
             return Err(Error::Other(
@@ -309,6 +309,15 @@ mod tests {
         let mut i = input("custom");
         i.endpoint = None;
         assert!(validate_input(&i).is_err());
+    }
+
+    #[test]
+    fn validate_requires_endpoint_for_hetzner() {
+        let mut i = input("hetzner");
+        i.endpoint = None;
+        assert!(validate_input(&i).is_err());
+        i.endpoint = Some("https://fsn1.your-objectstorage.com".into());
+        validate_input(&i).expect("https endpoint should be accepted");
     }
 
     #[test]

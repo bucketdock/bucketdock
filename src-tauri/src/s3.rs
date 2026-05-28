@@ -192,7 +192,11 @@ impl S3Client {
             // (https://<account>.r2.cloudflarestorage.com). Keep bucket names
             // in the request path so scoped tokens and account-endpoint signing
             // stay aligned.
-            .force_path_style(conn.provider == "custom" || conn.provider == "r2")
+            .force_path_style(
+                conn.provider == "custom"
+                    || conn.provider == "r2"
+                    || conn.provider == "hetzner",
+            )
             .build();
 
         Ok(S3Client {

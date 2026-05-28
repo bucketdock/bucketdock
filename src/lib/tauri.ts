@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type Provider = "aws" | "r2" | "custom";
+export type Provider = "aws" | "r2" | "hetzner" | "custom";
 
 export interface Connection {
   id: string;

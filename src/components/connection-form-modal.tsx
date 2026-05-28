@@ -90,7 +90,9 @@ export default function ConnectionFormModal({ open, onClose, initial }: Props) {
     }
   }, [r2AccountId, provider]);
 
-  const showEndpoint = provider === "r2" || provider === "custom";
+  const showEndpoint =
+    provider === "r2" || provider === "hetzner" || provider === "custom";
+  const showRegion = provider !== "hetzner";
 
   const isValid =
     name.trim() !== "" &&
@@ -99,10 +101,13 @@ export default function ConnectionFormModal({ open, onClose, initial }: Props) {
     (isEdit || secretAccessKey !== "");
 
   function buildInput(): ConnectionInput {
+    const effectiveRegion =
+      provider === "hetzner" ? "us-east-1" : region.trim();
+
     return {
       name: name.trim(),
       provider,
-      region: region.trim(),
+      region: effectiveRegion,
       endpoint: showEndpoint && endpoint.trim() ? endpoint.trim() : null,
       access_key_id: accessKeyId.trim(),
       secret_access_key: secretAccessKey.trim(),
@@ -199,20 +204,23 @@ export default function ConnectionFormModal({ open, onClose, initial }: Props) {
           >
             <option value="aws">AWS S3</option>
             <option value="r2">Cloudflare R2</option>
+            <option value="hetzner">Hetzner Object Storage</option>
             <option value="custom">S3-Compatible</option>
           </Select>
         </div>
 
         {/* Region */}
-        <div>
-          <Label htmlFor="conn-region">Region *</Label>
-          <Input
-            id="conn-region"
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            placeholder="us-east-1"
-          />
-        </div>
+        {showRegion && (
+          <div>
+            <Label htmlFor="conn-region">Region *</Label>
+            <Input
+              id="conn-region"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              placeholder="us-east-1"
+            />
+          </div>
+        )}
 
         {/* Endpoint fields (R2 / custom) */}
         {showEndpoint && (
@@ -241,7 +249,9 @@ export default function ConnectionFormModal({ open, onClose, initial }: Props) {
                 placeholder={
                   provider === "r2"
                     ? "https://<account>.r2.cloudflarestorage.com"
-                    : "https://s3.example.com"
+                    : provider === "hetzner"
+                      ? "https://fsn1.your-objectstorage.com"
+                      : "https://s3.example.com"
                 }
               />
             </div>
