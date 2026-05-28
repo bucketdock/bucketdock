@@ -2,7 +2,7 @@
 
 **BucketDock — your S3 browser, on your macOS desktop.**
 
-BucketDock is built for AWS S3, Cloudflare R2, and other S3-compatible providers when you want a desktop UI instead of the CLI or a browser dashboard.
+BucketDock is built for AWS S3, Cloudflare R2, Hetzner Object Storage, and other S3-compatible providers when you want a desktop UI instead of the CLI or a browser dashboard.
 
 <img src="bucketdock-app-screenshot.png" alt="BucketDock application screenshot"/>
 <img src="bucketdock-files-copy-screenshot.png" alt="BucketDock application files/folders copy screenshot"/>
@@ -32,7 +32,7 @@ Official signed and notarized builds are planned later.
 ### Connections
 
 - Multiple saved connections
-- Providers: AWS S3, Cloudflare R2, generic S3-compatible endpoints
+- Providers: AWS S3, Cloudflare R2, Hetzner Object Storage, generic S3-compatible endpoints
 - Connection testing from the UI
 - Optional fixed bucket list for scoped credentials
 - Edit and delete connection profiles
@@ -47,6 +47,7 @@ Official signed and notarized builds are planned later.
 - Empty states and loading skeletons
 - Inline filter box in the toolbar (case-insensitive substring match)
 - Sortable columns: Name, Type, Storage Class, Size, Modified
+- The Name column is resizable so long filenames and folder names do not force the table wider than needed
 - Type column shows the real `Content-Type` returned by the server (fetched via batched HEAD requests after the listing loads); it falls back to the default S3 type (`application/octet-stream` for files, `—` for folders) until the HEAD response arrives
 - Per-row actions menu (…) for keyboard- and mouse-friendly access
 - Modified column shows a short relative time with a full timestamp on hover
@@ -77,6 +78,7 @@ Official signed and notarized builds are planned later.
 - Copy / Move destination picker with a folder tree, lazy-expanded children
   on click, and an inline "New Folder" action so you can carve out a fresh
   destination without leaving the dialog
+- Calculate folder size recursively across all nested subfolders from the folder context menu
 
 ### Transfer Queue
 
@@ -135,7 +137,7 @@ BucketDock uses a split desktop architecture:
 Next.js frontend
   -> Tauri command bridge
     -> Rust backend
-      -> AWS SDK for S3 / R2 / compatible providers
+      -> AWS SDK for S3 / R2 / Hetzner / compatible providers
 ```
 
 The frontend never talks directly to S3.
@@ -297,6 +299,17 @@ Example:
 Provider: S3-Compatible
 Endpoint: https://s3.example.com
 Region: us-east-1
+Buckets: my-bucket
+```
+
+### Hetzner Object Storage
+
+Example:
+
+```text
+Provider: Hetzner Object Storage
+Endpoint: https://fsn1.your-objectstorage.com
+Region: hidden in the form
 Buckets: my-bucket
 ```
 

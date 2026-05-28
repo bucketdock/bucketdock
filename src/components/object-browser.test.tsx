@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // ── Tauri command mocks ──────────────────────────────────────────────────────
@@ -10,6 +16,7 @@ import userEvent from "@testing-library/user-event";
 
 const listObjectsMock = vi.fn();
 const headObjectContentTypesMock = vi.fn().mockResolvedValue({});
+const listKeysUnderMock = vi.fn().mockResolvedValue([]);
 const walkLocalFilesMock = vi.fn().mockResolvedValue([]);
 
 vi.mock("@/lib/tauri", async () => {
@@ -20,6 +27,7 @@ vi.mock("@/lib/tauri", async () => {
     listObjects: (...args: unknown[]) => listObjectsMock(...args),
     headObjectContentTypes: (...args: unknown[]) =>
       headObjectContentTypesMock(...args),
+    listKeysUnder: (...args: unknown[]) => listKeysUnderMock(...args),
     walkLocalFiles: (...args: unknown[]) => walkLocalFilesMock(...args),
     isTauri: () => false,
   };
@@ -51,13 +59,18 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...args: unknown[]) => dialogOpenMock(...args),
 }));
 
+const toastErrorMock = vi.fn();
+const toastSuccessMock = vi.fn();
+const toastLoadingMock = vi.fn();
+const toastDismissMock = vi.fn();
+const toastMessageMock = vi.fn();
 vi.mock("sonner", () => ({
   toast: {
-    error: vi.fn(),
-    success: vi.fn(),
-    loading: vi.fn(),
-    dismiss: vi.fn(),
-    message: vi.fn(),
+    error: (...args: unknown[]) => toastErrorMock(...args),
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+    loading: (...args: unknown[]) => toastLoadingMock(...args),
+    dismiss: (...args: unknown[]) => toastDismissMock(...args),
+    message: (...args: unknown[]) => toastMessageMock(...args),
   },
 }));
 
@@ -90,11 +103,19 @@ beforeEach(() => {
   listObjectsMock.mockReset();
   headObjectContentTypesMock.mockReset();
   headObjectContentTypesMock.mockResolvedValue({});
+  listKeysUnderMock.mockReset();
+  listKeysUnderMock.mockResolvedValue([]);
   walkLocalFilesMock.mockReset();
   walkLocalFilesMock.mockResolvedValue([]);
   enqueueUploadMock.mockReset();
   enqueueDeleteMock.mockReset();
   dialogOpenMock.mockReset();
+  toastErrorMock.mockReset();
+  toastSuccessMock.mockReset();
+  toastLoadingMock.mockReset();
+  toastDismissMock.mockReset();
+  toastMessageMock.mockReset();
+  window.localStorage.clear();
   seedStore();
 
   // Default tree:
@@ -403,6 +424,104 @@ describe("ObjectBrowser context menu", () => {
 
     expect(await screen.findByText("Copy to…")).toBeInTheDocument();
     expect(screen.getByText("Move to…")).toBeInTheDocument();
+    expect(screen.getByText("Calculate Folder Size")).toBeInTheDocument();
+  });
+
+  it("does not show 'Calculate Folder Size' for file rows", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    const fileName = await screen.findByText("report.pdf");
+    await user.pointer({
+      keys: "[MouseRight>]",
+      target: fileName,
+    });
+
+    expect(screen.queryByText("Calculate Folder Size")).not.toBeInTheDocument();
+  });
+});
+
+describe("ObjectBrowser folder size calculation", () => {
+  it("calculates recursively and shows the total size in the folder row", async () => {
+    const user = userEvent.setup();
+    listKeysUnderMock.mockResolvedValueOnce([
+      {
+        key: "photos/cover.jpg",
+        size: 2048,
+        last_modified: null,
+        etag: null,
+        storage_class: null,
+      },
+      {
+        key: "photos/2024/jan.jpg",
+        size: 4096,
+        last_modified: null,
+        etag: null,
+        storage_class: null,
+      },
+    ]);
+
+    render(<ObjectBrowser />);
+    const folderName = await screen.findByText("photos");
+    await user.pointer({ keys: "[MouseRight>]", target: folderName });
+    await user.click(await screen.findByText("Calculate Folder Size"));
+
+    await waitFor(() =>
+      expect(listKeysUnderMock).toHaveBeenCalledWith(
+        "c1",
+        "my-bucket",
+        "photos/",
+      ),
+    );
+    await screen.findByText("6.0 KB");
+  });
+
+  it("does not emit toast notifications while calculating folder size", async () => {
+    const user = userEvent.setup();
+    listKeysUnderMock.mockResolvedValueOnce([
+      {
+        key: "photos/cover.jpg",
+        size: 1024,
+        last_modified: null,
+        etag: null,
+        storage_class: null,
+      },
+    ]);
+
+    render(<ObjectBrowser />);
+    const folderName = await screen.findByText("photos");
+    await user.pointer({ keys: "[MouseRight>]", target: folderName });
+    await user.click(await screen.findByText("Calculate Folder Size"));
+
+    await waitFor(() =>
+      expect(listKeysUnderMock).toHaveBeenCalledWith(
+        "c1",
+        "my-bucket",
+        "photos/",
+      ),
+    );
+    expect(toastLoadingMock).not.toHaveBeenCalled();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(toastDismissMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("ObjectBrowser Name column resizing", () => {
+  it("persists resized Name column width in localStorage", async () => {
+    render(<ObjectBrowser />);
+    await screen.findByText("report.pdf");
+
+    const resizeHandle = screen.getByLabelText("Resize column");
+    fireEvent.mouseDown(resizeHandle, { clientX: 300 });
+    fireEvent.mouseMove(window, { clientX: 420 });
+    fireEvent.mouseUp(window);
+
+    const stored = window.localStorage.getItem(
+      "bucketdock.objectBrowser.nameColWidth",
+    );
+    expect(stored).not.toBeNull();
+    expect(Number(stored)).toBeGreaterThan(360);
   });
 });
 

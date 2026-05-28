@@ -34,6 +34,7 @@ import {
   isTauri,
   downloadFolder,
   headObjectContentTypes,
+  listKeysUnder,
   walkLocalFiles,
   type ObjectInfo,
 } from "@/lib/tauri";
@@ -91,6 +92,57 @@ export function folderDisplayName(
   return folderKey.slice(parentPrefix.length).replace(/\/$/, "");
 }
 
+// ── Name column resizing ─────────────────────────────────────────────────────
+// Persisted width (pixels) of the Name column. Finder remembers column widths
+// per window; we keep a single user-wide value because the browser only has
+// one such table.
+const NAME_COL_MIN = 160;
+const NAME_COL_MAX = 900;
+const NAME_COL_DEFAULT = 360;
+const NAME_COL_STORAGE_KEY = "bucketdock.objectBrowser.nameColWidth";
+
+function readStoredNameWidth(): number {
+  if (typeof window === "undefined") return NAME_COL_DEFAULT;
+  const raw = window.localStorage.getItem(NAME_COL_STORAGE_KEY);
+  const n = raw ? Number.parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(n)) return NAME_COL_DEFAULT;
+  return Math.min(NAME_COL_MAX, Math.max(NAME_COL_MIN, n));
+}
+
+/**
+ * Renders a single-line name that truncates with an ellipsis when it overflows
+ * its cell, and reveals the full value in an app-themed tooltip on hover —
+ * only when truncation is actually happening, so short names stay quiet.
+ */
+function TruncatedName({ children }: { children: string }) {
+  const ref = React.useRef<HTMLSpanElement>(null);
+  const [show, setShow] = React.useState(false);
+  const [truncated, setTruncated] = React.useState(false);
+  return (
+    <span
+      className="relative block min-w-0 flex-1"
+      onMouseEnter={() => {
+        const el = ref.current;
+        setTruncated(!!el && el.scrollWidth > el.clientWidth + 1);
+        setShow(true);
+      }}
+      onMouseLeave={() => setShow(false)}
+    >
+      <span ref={ref} className="block truncate">
+        {children}
+      </span>
+      {show && truncated && (
+        <span
+          role="tooltip"
+          className="absolute z-50 left-0 top-full mt-1 max-w-120 rounded-md bg-neutral-900 dark:bg-neutral-100 px-2 py-1 text-xs text-white dark:text-neutral-900 shadow-lg pointer-events-none break-all whitespace-normal"
+        >
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ListingState {
@@ -126,6 +178,8 @@ function SortableHeader({
   onSort,
   align,
   width,
+  style,
+  onResizeStart,
 }: {
   label: string;
   col: SortKey;
@@ -134,15 +188,18 @@ function SortableHeader({
   onSort: (k: SortKey) => void;
   align: "left" | "right";
   width?: string;
+  style?: React.CSSProperties;
+  onResizeStart?: (e: React.MouseEvent) => void;
 }) {
   const active = sortKey === col;
   return (
     <th
       className={cn(
-        "px-3 py-2 font-medium text-neutral-500 text-xs cursor-pointer select-none",
+        "relative px-3 py-2 font-medium text-neutral-500 text-xs cursor-pointer select-none",
         align === "left" ? "text-left" : "text-right",
         width,
       )}
+      style={style}
       onClick={() => onSort(col)}
     >
       <span
@@ -159,6 +216,16 @@ function SortableHeader({
             <ArrowDown className="w-3 h-3" />
           ))}
       </span>
+      {onResizeStart && (
+        <span
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize column"
+          onMouseDown={onResizeStart}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize select-none hover:bg-blue-500/40 active:bg-blue-500/60"
+        />
+      )}
     </th>
   );
 }
@@ -211,6 +278,60 @@ export default function ObjectBrowser() {
     Record<string, string | null>
   >({});
 
+  // ── Folder size state ─────────────────────────────────────────────────────
+  // Computed on demand from the context menu. `loading` keeps the spinner /
+  // optimistic state visible while we walk the prefix; on success we show
+  // total bytes + object count in the Size cell. Reset on context change so
+  // stale numbers never leak between buckets / prefixes.
+  type FolderSize =
+    | { state: "loading" }
+    | { state: "done"; bytes: number; count: number }
+    | { state: "error" };
+  const [folderSizes, setFolderSizes] = React.useState<
+    Record<string, FolderSize>
+  >({});
+
+  // ── Name column width ─────────────────────────────────────────────────────
+  const [nameColWidth, setNameColWidth] = React.useState<number>(() =>
+    readStoredNameWidth(),
+  );
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(NAME_COL_STORAGE_KEY, String(nameColWidth));
+  }, [nameColWidth]);
+  const resizeStateRef = React.useRef<{
+    startX: number;
+    startW: number;
+  } | null>(null);
+  const onNameResizeStart = React.useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resizeStateRef.current = { startX: e.clientX, startW: nameColWidth };
+      const onMove = (ev: MouseEvent) => {
+        const st = resizeStateRef.current;
+        if (!st) return;
+        const next = Math.min(
+          NAME_COL_MAX,
+          Math.max(NAME_COL_MIN, st.startW + (ev.clientX - st.startX)),
+        );
+        setNameColWidth(next);
+      };
+      const onUp = () => {
+        resizeStateRef.current = null;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [nameColWidth],
+  );
+
   // ── Disclosure-triangle state ──────────────────────────────────────────────
   // Folder key (with trailing slash) -> child listing. Mirrors the Finder
   // list-view behaviour where clicking the disclosure triangle reveals the
@@ -229,8 +350,8 @@ export default function ObjectBrowser() {
   React.useEffect(() => {
     // Collapse everything on listing context change. Without this, switching
     // buckets while folders were expanded would briefly render orphan rows.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset on context change
     setExpanded({});
+    setFolderSizes({});
   }, [connId, bucket, prefix]);
 
   const toggleExpand = React.useCallback(
@@ -927,6 +1048,25 @@ export default function ObjectBrowser() {
 
   // ── Context menu ───────────────────────────────────────────────────────────
 
+  const calculateFolderSize = React.useCallback(
+    async (folderKey: string) => {
+      if (!connId || !bucket) return;
+      setFolderSizes((s) => ({ ...s, [folderKey]: { state: "loading" } }));
+      try {
+        const objects = await listKeysUnder(connId, bucket, folderKey);
+        const bytes = objects.reduce((acc, o) => acc + o.size, 0);
+        const count = objects.length;
+        setFolderSizes((s) => ({
+          ...s,
+          [folderKey]: { state: "done", bytes, count },
+        }));
+      } catch {
+        setFolderSizes((s) => ({ ...s, [folderKey]: { state: "error" } }));
+      }
+    },
+    [connId, bucket],
+  );
+
   const buildContextMenuItems = (info: ContextMenuInfo): ContextMenuItem[] => {
     const { key, isFolder } = info;
     const applyToSelection = selection.has(key) && selection.size > 1;
@@ -939,6 +1079,11 @@ export default function ObjectBrowser() {
         label: "Open",
         icon: <ExternalLink className="w-3.5 h-3.5" />,
         onClick: () => navigateInto(key.slice(prefix.length)),
+      });
+      items.push({
+        label: "Calculate Folder Size",
+        icon: <Info className="w-3.5 h-3.5" />,
+        onClick: () => calculateFolderSize(key),
       });
     }
 
@@ -1139,15 +1284,24 @@ export default function ObjectBrowser() {
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
               <Folder className="w-4 h-4 text-yellow-500 shrink-0 ml-0.5" />
-              <span className="truncate">{displayName}</span>
+              <TruncatedName>{displayName}</TruncatedName>
             </div>
           </td>
           <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
             Folder
           </td>
           <td className="px-3 py-1 text-neutral-400 whitespace-nowrap">—</td>
-          <td className="px-3 py-1 text-right text-neutral-400 whitespace-nowrap">
-            —
+          <td className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums whitespace-nowrap">
+            {(() => {
+              const fs = folderSizes[folder];
+              if (!fs) return "—";
+              if (fs.state === "loading")
+                return (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin inline-block" />
+                );
+              if (fs.state === "error") return "—";
+              return formatSize(fs.bytes);
+            })()}
           </td>
           <td className="px-3 py-1 text-right text-neutral-400 whitespace-nowrap">
             —
@@ -1231,7 +1385,7 @@ export default function ObjectBrowser() {
                 a disclosure triangle to their left. */}
             <span className="w-4 shrink-0" aria-hidden="true" />
             <FileIcon className="w-4 h-4 text-neutral-400 shrink-0" />
-            <span className="truncate">{displayName}</span>
+            <TruncatedName>{displayName}</TruncatedName>
           </div>
         </td>
         <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 truncate whitespace-nowrap">
@@ -1624,11 +1778,14 @@ export default function ObjectBrowser() {
         {listing.loading &&
         listing.folders.length === 0 &&
         listing.files.length === 0 ? (
-          <table className="w-full text-[13px]">
+          <table className="w-full table-fixed text-[13px]">
             <thead>
               <tr className="border-b border-black/8 dark:border-white/8">
                 <th className="w-10 px-3 py-2" />
-                <th className="text-left px-3 py-2 font-medium text-neutral-500 text-xs">
+                <th
+                  className="text-left px-3 py-2 font-medium text-neutral-500 text-xs"
+                  style={{ width: nameColWidth }}
+                >
                   Name
                 </th>
                 <th className="text-left px-3 py-2 font-medium text-neutral-500 text-xs w-20">
@@ -1693,7 +1850,7 @@ export default function ObjectBrowser() {
             />
           </div>
         ) : (
-          <table className="w-full text-[13px]">
+          <table className="w-full table-fixed text-[13px]">
             <thead className="sticky top-0 z-1 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm">
               <tr className="border-b border-black/8 dark:border-white/8">
                 <th className="w-10 px-3 py-2">
@@ -1726,6 +1883,8 @@ export default function ObjectBrowser() {
                     }
                   }}
                   align="left"
+                  style={{ width: nameColWidth }}
+                  onResizeStart={onNameResizeStart}
                 />
                 <SortableHeader
                   label="Type"
