@@ -7,6 +7,7 @@ const copyObjectTrackedMock = vi.fn().mockResolvedValue(undefined);
 const deleteObjectMock = vi.fn().mockResolvedValue(undefined);
 const deleteObjectsMock = vi.fn().mockResolvedValue(undefined);
 const deletePrefixMock = vi.fn().mockResolvedValue(undefined);
+const deleteTrackedMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/tauri", () => ({
   cancelTransfer: (...args: unknown[]) => cancelTransferMock(...args),
@@ -16,6 +17,7 @@ vi.mock("@/lib/tauri", () => ({
   deleteObject: (...args: unknown[]) => deleteObjectMock(...args),
   deleteObjects: (...args: unknown[]) => deleteObjectsMock(...args),
   deletePrefix: (...args: unknown[]) => deletePrefixMock(...args),
+  deleteTracked: (...args: unknown[]) => deleteTrackedMock(...args),
 }));
 
 vi.mock("sonner", () => ({
@@ -213,5 +215,32 @@ describe("transfersStore.enqueueMove — folder items", () => {
     });
     await flush();
     expect(deletePrefixMock).toHaveBeenCalledWith("c1", "src", "empty/");
+  });
+});
+
+describe("transfersStore.enqueueDelete", () => {
+  it("creates a delete transfer and invokes deleteTracked with both keys and prefixes", async () => {
+    useTransfersStore.getState().enqueueDelete({
+      connectionId: "c1",
+      bucket: "b",
+      keys: ["a.txt", "b.txt"],
+      prefixes: ["photos/"],
+      name: "Delete 3 items",
+    });
+    await flush();
+
+    const items = useTransfersStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("delete");
+    expect(items[0].name).toBe("Delete 3 items");
+
+    expect(deleteTrackedMock).toHaveBeenCalledTimes(1);
+    expect(deleteTrackedMock).toHaveBeenCalledWith(
+      "c1",
+      "b",
+      ["a.txt", "b.txt"],
+      ["photos/"],
+      items[0].id,
+    );
   });
 });

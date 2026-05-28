@@ -10,9 +10,10 @@ import {
   deleteObject,
   deleteObjects,
   deletePrefix,
+  deleteTracked,
 } from "@/lib/tauri";
 
-export type TransferKind = "upload" | "download" | "copy";
+export type TransferKind = "upload" | "download" | "copy" | "delete";
 export type TransferStatus =
   | "queued"
   | "running"
@@ -33,6 +34,9 @@ export interface TransferParams {
   dstConnectionId?: string;
   dstBucket?: string;
   dstKey?: string;
+  // Delete (bulk)
+  deleteKeys?: string[];
+  deletePrefixes?: string[];
 }
 
 export interface Transfer {
@@ -101,6 +105,22 @@ interface TransfersStore {
     srcConnectionId: string;
     srcBucket: string;
     items: Array<MoveBatchItem>;
+  }) => string;
+
+  /**
+   * Tracked bulk delete. Mixes individual object keys and folder
+   * (prefix) keys — the backend expands prefixes to all of their
+   * descendants and emits a single progress stream so even a folder with
+   * thousands of objects gets a visible bar instead of vanishing into a
+   * spinner. Returns the transfer id (mostly useful for tests).
+   */
+  enqueueDelete: (input: {
+    connectionId: string;
+    bucket: string;
+    keys: string[];
+    prefixes: string[];
+    name: string;
+    subtitle?: string;
   }) => string;
 
   applyProgress: (
@@ -305,6 +325,14 @@ async function startTransfer(t: Transfer) {
         t.params.localPath!,
         t.id,
       );
+    } else if (t.kind === "delete") {
+      await deleteTracked(
+        t.params.connectionId!,
+        t.params.bucket!,
+        t.params.deleteKeys ?? [],
+        t.params.deletePrefixes ?? [],
+        t.id,
+      );
     } else {
       await copyObjectTracked(
         t.params.srcConnectionId!,
@@ -409,6 +437,32 @@ export const useTransfersStore = create<TransfersStore>((set, get) => ({
         dstConnectionId,
         dstBucket,
         dstKey,
+      },
+      createdAt: Date.now(),
+    };
+    set((s) => ({ items: [t, ...s.items], open: true }));
+    void startTransfer(t);
+    return id;
+  },
+
+  enqueueDelete: ({ connectionId, bucket, keys, prefixes, name, subtitle }) => {
+    const id = newId();
+    const t: Transfer = {
+      id,
+      kind: "delete",
+      name,
+      subtitle,
+      status: "running",
+      // Total is unknown until the backend has enumerated the prefixes.
+      // The backend will emit a `running` event with the discovered total
+      // almost immediately, so the bar reaches a sane scale on its own.
+      loaded: 0,
+      total: 0,
+      params: {
+        connectionId,
+        bucket,
+        deleteKeys: keys,
+        deletePrefixes: prefixes,
       },
       createdAt: Date.now(),
     };

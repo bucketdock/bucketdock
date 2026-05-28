@@ -9,6 +9,7 @@ import {
   Check,
   Loader2,
   Home,
+  Search,
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -100,6 +101,12 @@ export default function CopyToModal({
   const [creatingFolder, setCreatingFolder] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [showNewFolderInput, setShowNewFolderInput] = React.useState(false);
+  // Per-modal-session filter for the destination tree. Filtering applies
+  // per-level: a folder is shown when its name matches *or* it has any
+  // matched descendant that is currently loaded. The bucket root is
+  // always shown so the destination remains pickable even if the query
+  // matches nothing.
+  const [treeFilter, setTreeFilter] = React.useState("");
 
   React.useEffect(() => {
     if (!open) return;
@@ -118,6 +125,7 @@ export default function CopyToModal({
     });
     setShowNewFolderInput(false);
     setNewFolderName("");
+    setTreeFilter("");
   }, [open, srcConnectionId, srcBucket]);
 
   React.useEffect(() => {
@@ -561,7 +569,30 @@ export default function CopyToModal({
           </li>,
         );
       } else if (node.children) {
-        for (const child of node.children) {
+        // Filter child folders by the destination-tree search query. We
+        // match on the leaf name only — the user is picking a folder, so
+        // matching against the full key would be noisy. An empty query
+        // matches everything (the test below short-circuits).
+        const q = treeFilter.trim().toLowerCase();
+        const matchedChildren = node.children.filter((child) => {
+          if (!q) return true;
+          const name =
+            child.replace(/\/$/, "").split("/").pop()?.toLowerCase() ?? "";
+          return name.includes(q);
+        });
+        if (matchedChildren.length === 0 && q) {
+          rows.push(
+            <li key={`nomatch-${prefix}`}>
+              <div
+                className="px-2 py-1 text-xs text-neutral-400 italic"
+                style={{ paddingLeft: `${(depth + 1) * 16 + 6}px` }}
+              >
+                No folders match “{treeFilter}”
+              </div>
+            </li>,
+          );
+        }
+        for (const child of matchedChildren) {
           rows.push(renderNode(child, depth + 1));
         }
       }
@@ -679,10 +710,24 @@ export default function CopyToModal({
             choose it as the destination. The selected row gets the macOS
             accent tint and a check on the right. */}
         <div className="rounded-md border border-black/10 dark:border-white/10 bg-white/60 dark:bg-neutral-900/60 overflow-hidden">
-          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-black/8 dark:border-white/8">
-            <span className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-black/8 dark:border-white/8 gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 shrink-0">
               Destination
             </span>
+            {/* Filter input — narrows the visible children at each loaded
+                level by name. Kept compact so the New Folder button still
+                fits next to it on small modal widths. */}
+            <div className="relative flex-1 min-w-0 max-w-45">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-400 pointer-events-none" />
+              <Input
+                value={treeFilter}
+                onChange={(e) => setTreeFilter(e.target.value)}
+                placeholder="Filter folders…"
+                className="pl-6 h-6 text-xs"
+                aria-label="Filter destination folders"
+                data-testid="copy-tree-filter"
+              />
+            </div>
             <Button
               type="button"
               variant="ghost"

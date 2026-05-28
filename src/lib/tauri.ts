@@ -373,6 +373,30 @@ export function cancelTransfer(transferId: string): Promise<void> {
   return call("cancel_transfer", { transferId });
 }
 
+/**
+ * Tracked bulk delete that emits the same `transfer://progress` stream as
+ * uploads / downloads / copies. `keys` are individual object keys to delete;
+ * `prefixes` (folder keys with trailing `/`) are expanded server-side to
+ * include every descendant. Returning through the transfer queue is what
+ * lets the UI show a count + bar instead of an opaque "Deleting…" toast,
+ * which matters when the user is wiping a folder with thousands of files.
+ */
+export function deleteTracked(
+  connectionId: string,
+  bucket: string,
+  keys: string[],
+  prefixes: string[],
+  transferId: string,
+): Promise<void> {
+  return call("delete_tracked", {
+    connectionId,
+    bucket,
+    keys,
+    prefixes,
+    transferId,
+  });
+}
+
 export interface TransferProgressEvent {
   id: string;
   status: "running" | "done" | "failed" | "cancelled";

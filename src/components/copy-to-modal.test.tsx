@@ -238,3 +238,31 @@ describe("CopyToModal Move mode", () => {
     expect(enqueueMoveMock).not.toHaveBeenCalled();
   });
 });
+
+describe("CopyToModal destination filter", () => {
+  it("hides tree rows whose folder name does not match the filter query", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    // Both top-level folders visible by default.
+    await screen.findByTestId("copy-tree-row-photos/");
+    expect(screen.getByTestId("copy-tree-row-docs/")).toBeInTheDocument();
+
+    const filter = screen.getByTestId("copy-tree-filter");
+    await user.type(filter, "photo");
+
+    expect(screen.getByTestId("copy-tree-row-photos/")).toBeInTheDocument();
+    expect(screen.queryByTestId("copy-tree-row-docs/")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty-state hint when no folder matches the query", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await screen.findByTestId("copy-tree-row-photos/");
+    const filter = screen.getByTestId("copy-tree-filter");
+    await user.type(filter, "zzz");
+
+    expect(screen.getByText(/No folders match/i)).toBeInTheDocument();
+  });
+});

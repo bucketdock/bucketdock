@@ -194,6 +194,7 @@ pub fn run() {
       commands_transfers::download_file_tracked,
       commands_transfers::copy_object_tracked,
       commands_transfers::cancel_transfer,
+      commands_transfers::delete_tracked,
     ])
     .build(tauri::generate_context!())
     .expect("error while building tauri application")

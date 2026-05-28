@@ -9,6 +9,7 @@ import {
   Upload,
   Download,
   ArrowRightLeft,
+  Trash2,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -28,6 +29,7 @@ function formatSize(bytes: number): string {
 function KindIcon({ kind }: { kind: Transfer["kind"] }) {
   if (kind === "upload") return <Upload className="w-3.5 h-3.5" />;
   if (kind === "download") return <Download className="w-3.5 h-3.5" />;
+  if (kind === "delete") return <Trash2 className="w-3.5 h-3.5 text-red-500" />;
   return <ArrowRightLeft className="w-3.5 h-3.5" />;
 }
 
@@ -118,6 +120,13 @@ export default function TransferQueue() {
                   ? Math.min(100, Math.round((t.loaded / t.total) * 100))
                   : 0;
               const showBar = t.status === "running" && t.total > 0;
+              // Delete progress is measured in *object count* rather than
+              // bytes, so render it as "N items" instead of feeding the
+              // value into formatSize (which would print misleading KB/MB).
+              const isCounted = t.kind === "delete";
+              const totalLabel = isCounted
+                ? `${t.total} item${t.total === 1 ? "" : "s"}`
+                : formatSize(t.total);
               return (
                 <div key={t.id} className="px-3 py-2 text-xs">
                   <div className="flex items-center gap-2">
@@ -194,7 +203,7 @@ export default function TransferQueue() {
                         )}
                       >
                         {t.status === "running" ? "Starting…" : t.status}
-                        {t.total > 0 && ` · ${formatSize(t.total)}`}
+                        {t.total > 0 && ` · ${totalLabel}`}
                       </span>
                     )}
                   </div>

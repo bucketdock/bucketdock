@@ -26,6 +26,7 @@ vi.mock("@/lib/tauri", async () => {
 });
 
 const enqueueUploadMock = vi.fn();
+const enqueueDeleteMock = vi.fn();
 vi.mock("@/store/transfers-store", () => ({
   useTransfersStore: Object.assign(
     (selector: (s: { enqueueUpload: () => void }) => unknown) =>
@@ -36,6 +37,7 @@ vi.mock("@/store/transfers-store", () => ({
         enqueueUpload: enqueueUploadMock,
         enqueueDownload: () => {},
         enqueueCopy: () => {},
+        enqueueDelete: enqueueDeleteMock,
       }),
       subscribe: () => () => {},
     },
@@ -91,6 +93,7 @@ beforeEach(() => {
   walkLocalFilesMock.mockReset();
   walkLocalFilesMock.mockResolvedValue([]);
   enqueueUploadMock.mockReset();
+  enqueueDeleteMock.mockReset();
   dialogOpenMock.mockReset();
   seedStore();
 
@@ -421,5 +424,61 @@ describe("ObjectBrowser header layout", () => {
     expect(await screen.findByTestId("selection-count")).toHaveTextContent(
       "1 selected",
     );
+  });
+});
+
+describe("ObjectBrowser delete flow", () => {
+  it("enqueues a tracked delete instead of calling the backend directly", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    // Select the file row and open its context menu to trigger Delete.
+    const fileName = await screen.findByText("report.pdf");
+    await user.click(fileName);
+    await user.pointer({ keys: "[MouseRight>]", target: fileName });
+
+    const deleteItem = await screen.findByText("Delete");
+    await user.click(deleteItem);
+
+    // Confirm in the modal.
+    const confirm = await screen.findByRole("button", { name: "Delete" });
+    await user.click(confirm);
+
+    await waitFor(() => expect(enqueueDeleteMock).toHaveBeenCalledTimes(1));
+    expect(enqueueDeleteMock.mock.calls[0][0]).toMatchObject({
+      connectionId: "c1",
+      bucket: "my-bucket",
+      keys: ["report.pdf"],
+      prefixes: [],
+      name: "report.pdf",
+    });
+  });
+
+  it("does not offer 'Open in browser' for file rows", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    const fileName = await screen.findByText("report.pdf");
+    await user.pointer({ keys: "[MouseRight>]", target: fileName });
+
+    // The legacy menu entry generated presigned URLs and frequently
+    // failed for path-style endpoints — it has been removed entirely.
+    expect(screen.queryByText("Open in browser")).not.toBeInTheDocument();
+  });
+});
+
+describe("ObjectBrowser row layout", () => {
+  it("keeps file row cells on a single line", async () => {
+    render(<ObjectBrowser />);
+    const fileName = await screen.findByText("report.pdf");
+    // The name cell and its sibling metadata cells must not wrap — long
+    // sizes like "414 B" were breaking across two lines on narrow widths.
+    const row =
+      fileName.closest("[data-testid='file-row']") ??
+      fileName.closest("tr") ??
+      fileName.parentElement;
+    expect(row).not.toBeNull();
+    const cells = row!.querySelectorAll(".whitespace-nowrap");
+    expect(cells.length).toBeGreaterThan(0);
   });
 });

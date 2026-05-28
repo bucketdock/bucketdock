@@ -28,15 +28,11 @@ import { format, formatDistanceToNow, isThisYear } from "date-fns";
 
 import {
   listObjects,
-  deleteObject,
-  deleteObjects,
   createFolder,
   renameObject,
   renamePrefix,
-  getPresignedUrl,
   isTauri,
   downloadFolder,
-  deletePrefix,
   headObjectContentTypes,
   walkLocalFiles,
   type ObjectInfo,
@@ -318,43 +314,69 @@ export default function ObjectBrowser() {
   // away and back.
   const fetchTokenRef = React.useRef(0);
 
-  const fetchListing = React.useCallback(async () => {
-    if (!connId || !bucket) return;
-    const token = ++fetchTokenRef.current;
-    setListing((s) => ({ ...s, loading: true, error: null }));
-    setSelection(new Set());
-    setContentTypes({});
-    try {
-      const page = await listObjects(connId, bucket, prefix);
-      if (token !== fetchTokenRef.current) return;
-      setListing({
-        folders: page.folders,
-        files: page.files,
-        loading: false,
-        error: null,
-      });
-      // Fan out HEAD requests in the background so the Type column can show
-      // real Content-Type values instead of the S3 default placeholder.
-      // Errors are swallowed: the column gracefully falls back to the
-      // placeholder when a value never arrives.
-      const fileKeys = page.files.map((f) => f.key);
-      if (fileKeys.length > 0 && isTauri()) {
-        headObjectContentTypes(connId, bucket, fileKeys)
-          .then((map) => {
-            if (token !== fetchTokenRef.current) return;
-            setContentTypes((prev) => ({ ...prev, ...map }));
-          })
-          .catch(() => {
-            /* leave placeholder */
-          });
+  const fetchListing = React.useCallback(
+    async (options?: { background?: boolean }) => {
+      if (!connId || !bucket) return;
+      const token = ++fetchTokenRef.current;
+      const background = options?.background === true;
+      // ── Soft refresh ────────────────────────────────────────────────────
+      // A background refresh keeps the current rows on screen while the
+      // request is in flight (no skeletons, no selection clear, no scroll
+      // jump). This is what we want after every transfer / delete / rename
+      // — re-rendering the skeleton there caused the table to visibly
+      // blank on every queued operation and made bulk actions feel like
+      // they were flashing the UI.
+      // A hard refresh (initial mount, prefix change, manual reload) still
+      // clears state so the user sees that something is happening.
+      if (background) {
+        setListing((s) => ({ ...s, loading: true, error: null }));
+      } else {
+        setListing((s) => ({ ...s, loading: true, error: null }));
+        setSelection(new Set());
+        setContentTypes({});
       }
-    } catch (err) {
-      if (token !== fetchTokenRef.current) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      setListing((s) => ({ ...s, loading: false, error: msg }));
-      toast.error(`Failed to list objects: ${msg}`);
-    }
-  }, [connId, bucket, prefix]);
+      try {
+        const page = await listObjects(connId, bucket, prefix);
+        if (token !== fetchTokenRef.current) return;
+        setListing({
+          folders: page.folders,
+          files: page.files,
+          loading: false,
+          error: null,
+        });
+        // Fan out HEAD requests in the background so the Type column can show
+        // real Content-Type values instead of the S3 default placeholder.
+        // Errors are swallowed: the column gracefully falls back to the
+        // placeholder when a value never arrives.
+        const fileKeys = page.files.map((f) => f.key);
+        if (fileKeys.length > 0 && isTauri()) {
+          headObjectContentTypes(connId, bucket, fileKeys)
+            .then((map) => {
+              if (token !== fetchTokenRef.current) return;
+              // Merge so values for keys that are still present survive a
+              // background refresh, instead of flashing the placeholder.
+              setContentTypes((prev) => ({ ...prev, ...map }));
+            })
+            .catch(() => {
+              /* leave placeholder */
+            });
+        }
+      } catch (err) {
+        if (token !== fetchTokenRef.current) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        setListing((s) => ({ ...s, loading: false, error: msg }));
+        toast.error(`Failed to list objects: ${msg}`);
+      }
+    },
+    [connId, bucket, prefix],
+  );
+
+  // Memoised wrappers so callers don't need to remember to pass `background`.
+  const hardRefresh = React.useCallback(() => fetchListing(), [fetchListing]);
+  const softRefresh = React.useCallback(
+    () => fetchListing({ background: true }),
+    [fetchListing],
+  );
 
   React.useEffect(() => {
     fetchListing();
@@ -392,14 +414,21 @@ export default function ObjectBrowser() {
           (t.kind === "copy" &&
             t.params.dstConnectionId === c &&
             t.params.dstBucket === b &&
-            (t.params.dstKey ?? "").startsWith(p));
+            (t.params.dstKey ?? "").startsWith(p)) ||
+          (t.kind === "delete" &&
+            t.params.connectionId === c &&
+            t.params.bucket === b &&
+            // A delete touches the view if any of its targeted keys or
+            // prefixes sits under the currently-open prefix.
+            ((t.params.deleteKeys ?? []).some((k) => k.startsWith(p)) ||
+              (t.params.deletePrefixes ?? []).some((k) => k.startsWith(p))));
         if (matchesView) touchesView = true;
       }
       lastSeenDone = nextSeen;
-      if (touchesView) fetchListing();
+      if (touchesView) softRefresh();
     });
     return unsub;
-  }, [connId, bucket, fetchListing]);
+  }, [connId, bucket, softRefresh]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -494,7 +523,7 @@ export default function ObjectBrowser() {
           });
         }
         // Listing reflects new uploads on next refresh; user can refresh manually.
-        fetchListing();
+        softRefresh();
       });
     })();
 
@@ -504,7 +533,7 @@ export default function ObjectBrowser() {
       unlistenLeave?.();
       unlistenDrop?.();
     };
-  }, [fetchListing]);
+  }, [softRefresh]);
 
   // ── Selection helpers ──────────────────────────────────────────────────────
 
@@ -597,7 +626,7 @@ export default function ObjectBrowser() {
         subtitle: `${bucket}/${prefix}${name}`,
       });
     }
-    fetchListing();
+    softRefresh();
   };
 
   const handleUploadFolder = async () => {
@@ -639,7 +668,7 @@ export default function ObjectBrowser() {
     toast.success(
       `Queued ${entries.length} file${entries.length === 1 ? "" : "s"} from "${folderName}"`,
     );
-    fetchListing();
+    softRefresh();
   };
 
   // ── Native menu actions ────────────────────────────────────────────────────
@@ -660,7 +689,7 @@ export default function ObjectBrowser() {
   });
   React.useEffect(() => {
     menuHandlersRef.current = {
-      refresh: fetchListing,
+      refresh: hardRefresh,
       upload: handleUpload,
       uploadFolder: handleUploadFolder,
       newFolder: () => {
@@ -819,28 +848,32 @@ export default function ObjectBrowser() {
   const handleDeleteConfirm = async (keys: string[]) => {
     if (!connId || !bucket) return;
     setModal(null);
-    const toastId = toast.loading("Deleting…");
-    try {
-      const folderKeys = keys.filter((k) => listing.folders.includes(k));
-      const fileKeys = keys.filter((k) => !listing.folders.includes(k));
+    const folderKeys = keys.filter((k) => listing.folders.includes(k));
+    const fileKeys = keys.filter((k) => !listing.folders.includes(k));
+    if (folderKeys.length === 0 && fileKeys.length === 0) return;
 
-      for (const folderKey of folderKeys) {
-        await deletePrefix(connId, bucket, folderKey);
-      }
-
-      if (fileKeys.length === 1) {
-        await deleteObject(connId, bucket, fileKeys[0]);
-      } else if (fileKeys.length > 1) {
-        await deleteObjects(connId, bucket, fileKeys);
-      }
-
-      toast.dismiss(toastId);
-      toast.success(`Deleted ${keys.length} item(s)`);
-    } catch (err) {
-      toast.dismiss(toastId);
-      toast.error(`Delete failed: ${err}`);
+    // Route deletes through the transfer queue so the user sees live
+    // progress instead of a blocking spinner. Folder deletes can expand
+    // to thousands of objects — the previous opaque "Deleting…" toast hid
+    // exactly when those long operations were active and made them
+    // impossible to cancel.
+    let name: string;
+    if (keys.length === 1) {
+      const only = keys[0];
+      name = only.endsWith("/")
+        ? (only.replace(/\/$/, "").split("/").pop() ?? only) + "/"
+        : fileBasename(only);
+    } else {
+      name = `Delete ${keys.length} items`;
     }
-    fetchListing();
+    useTransfersStore.getState().enqueueDelete({
+      connectionId: connId,
+      bucket,
+      keys: fileKeys,
+      prefixes: folderKeys,
+      name,
+      subtitle: `${bucket}/${prefix}`,
+    });
     setSelection(new Set());
   };
 
@@ -868,7 +901,7 @@ export default function ObjectBrowser() {
       toast.error(`Rename failed: ${err}`);
     }
     setModal(null);
-    fetchListing();
+    softRefresh();
   };
 
   const handleNewFolder = async (name: string) => {
@@ -884,22 +917,13 @@ export default function ObjectBrowser() {
     }
     setModal(null);
     setNewFolderValue("");
-    fetchListing();
+    softRefresh();
   };
 
-  const handleOpenFile = async (key: string) => {
-    if (!connId || !bucket) return;
-    const toastId = toast.loading("Generating link…");
-    try {
-      const url = await getPresignedUrl(connId, bucket, key, 3600);
-      toast.dismiss(toastId);
-      const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl(url);
-    } catch (err) {
-      toast.dismiss(toastId);
-      toast.error(`Failed to open: ${err}`);
-    }
-  };
+  // "Open in browser" was intentionally removed: the presigned-URL flow was
+  // brittle across providers (some buckets returned 403 for the signed URL
+  // even when the credentials had GetObject). Use Preview or Download from
+  // the same context menu instead.
 
   // ── Context menu ───────────────────────────────────────────────────────────
 
@@ -910,14 +934,11 @@ export default function ObjectBrowser() {
 
     const items: ContextMenuItem[] = [];
 
-    if (!applyToSelection) {
+    if (!applyToSelection && isFolder) {
       items.push({
-        label: isFolder ? "Open" : "Open in browser",
+        label: "Open",
         icon: <ExternalLink className="w-3.5 h-3.5" />,
-        onClick: () => {
-          if (isFolder) navigateInto(key.slice(prefix.length));
-          else handleOpenFile(key);
-        },
+        onClick: () => navigateInto(key.slice(prefix.length)),
       });
     }
 
@@ -1121,12 +1142,16 @@ export default function ObjectBrowser() {
               <span className="truncate">{displayName}</span>
             </div>
           </td>
-          <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500">
+          <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
             Folder
           </td>
-          <td className="px-3 py-1 text-neutral-400">—</td>
-          <td className="px-3 py-1 text-right text-neutral-400">—</td>
-          <td className="px-3 py-1 text-right text-neutral-400">—</td>
+          <td className="px-3 py-1 text-neutral-400 whitespace-nowrap">—</td>
+          <td className="px-3 py-1 text-right text-neutral-400 whitespace-nowrap">
+            —
+          </td>
+          <td className="px-3 py-1 text-right text-neutral-400 whitespace-nowrap">
+            —
+          </td>
           <td className="px-1.5 py-1 text-right">
             <button
               type="button"
@@ -1209,16 +1234,16 @@ export default function ObjectBrowser() {
             <span className="truncate">{displayName}</span>
           </div>
         </td>
-        <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 truncate">
+        <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 truncate whitespace-nowrap">
           {typeLabel}
         </td>
-        <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 truncate">
+        <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 truncate whitespace-nowrap">
           {file.storage_class ?? <span className="text-neutral-400">—</span>}
         </td>
-        <td className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums">
+        <td className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums whitespace-nowrap">
           {formatSize(file.size)}
         </td>
-        <td className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums">
+        <td className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums whitespace-nowrap">
           {modDate ? (
             <Tooltip
               content={`${format(modDate, "yyyy-MM-dd HH:mm:ss")} · ${formatDistanceToNow(modDate, { addSuffix: true })}`}
@@ -1547,10 +1572,6 @@ export default function ObjectBrowser() {
               {selection.size} selected
             </span>
           )}
-          <OverflowToolbar
-            items={toolbarItems}
-            className="w-8 flex-none overflow-visible"
-          />
           <div className="relative shrink-0">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
             <Input
@@ -1565,10 +1586,21 @@ export default function ObjectBrowser() {
             onUploadFiles={handleUpload}
             onUploadFolder={handleUploadFolder}
           />
+          {/*
+            Secondary-actions overflow menu sits between Upload and Refresh
+            so the primary upload action stays anchored. The right margin
+            mirrors the visual width of the Refresh button below — without
+            it the "…" and the refresh chevron read as a single chunky
+            cluster, which made it hard to tell them apart at a glance.
+          */}
+          <OverflowToolbar
+            items={toolbarItems}
+            className="w-8 flex-none overflow-visible mr-2"
+          />
           <Button
             variant="ghost"
             size="icon"
-            onClick={fetchListing}
+            onClick={hardRefresh}
             aria-label="Refresh"
             title="Refresh"
           >
@@ -1581,7 +1613,17 @@ export default function ObjectBrowser() {
 
       {/* ── Body ── */}
       <div className="flex-1 min-h-0 overflow-auto">
-        {listing.loading ? (
+        {/*
+          Only show the skeleton when we don't have any rows to show yet —
+          a refresh on top of an already-populated table keeps the existing
+          rows on screen and shows progress through the spinning Refresh
+          icon and the transfer queue. Without this guard every queued
+          delete / upload / rename blanked the table for a frame, which
+          read as the app flickering.
+        */}
+        {listing.loading &&
+        listing.folders.length === 0 &&
+        listing.files.length === 0 ? (
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-black/8 dark:border-white/8">
@@ -1961,7 +2003,7 @@ export default function ObjectBrowser() {
           bucket={bucket}
           objectKey={editHeadersKey ?? ""}
           mode="edit"
-          onSaved={() => fetchListing()}
+          onSaved={() => softRefresh()}
         />
       )}
 
@@ -1985,7 +2027,7 @@ export default function ObjectBrowser() {
           srcBucket={bucket}
           keys={modal.keys}
           mode={modal.mode}
-          onCompleted={() => fetchListing()}
+          onCompleted={() => softRefresh()}
         />
       )}
     </div>

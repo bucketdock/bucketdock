@@ -271,3 +271,65 @@ pub async fn cancel_transfer(transfer_id: String, state: State<'_, AppState>) ->
     }
     Ok(())
 }
+
+/// Tracked bulk delete used to power the progress row in the transfer
+/// queue. `keys` are deleted directly; each entry in `prefixes` is expanded
+/// to all of its descendants (folder delete) before deletion. Progress is
+/// reported in object-count units, in batches of `CHUNK` keys per round-trip
+/// so the bar moves smoothly even for very large folders.
+///
+/// The reason this lives next to the file-transfer commands instead of in
+/// `commands_s3.rs` is that the user-facing semantics are identical to a
+/// transfer: the operation can be slow, must be cancellable, and the
+/// frontend wants live progress through the existing `transfer://progress`
+/// event channel.
+#[tauri::command]
+pub async fn delete_tracked(
+    connection_id: String,
+    bucket: String,
+    keys: Vec<String>,
+    prefixes: Vec<String>,
+    transfer_id: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<()> {
+    let conn = state.get_connection(&connection_id).await?;
+    let client = S3Client::from_connection(&ConnectionLike::from(&conn)).await?;
+
+    emit(&app, &transfer_id, "running", 0, 0, None);
+
+    run_tracked(
+        app.clone(),
+        &state,
+        transfer_id.clone(),
+        0,
+        move |app, id| async move {
+            // Expand every prefix into a flat key list. Doing this up front
+            // lets us emit an honest total so the progress bar can fill in
+            // a single direction instead of jumping when a folder is
+            // discovered late.
+            let mut all_keys: Vec<String> = keys;
+            for p in &prefixes {
+                let listed = client.list_all_keys(&bucket, p).await?;
+                for o in listed {
+                    all_keys.push(o.key);
+                }
+            }
+            let total = all_keys.len() as u64;
+            emit(&app, &id, "running", 0, total, None);
+
+            // S3 DeleteObjects accepts up to 1000 keys per call. We chunk
+            // smaller than that on purpose so progress events arrive
+            // frequently and a cancel takes effect within one round-trip.
+            const CHUNK: usize = 500;
+            let mut loaded: u64 = 0;
+            for chunk in all_keys.chunks(CHUNK) {
+                client.delete_objects(&bucket, chunk.to_vec()).await?;
+                loaded += chunk.len() as u64;
+                emit(&app, &id, "running", loaded, total, None);
+            }
+            Ok(loaded)
+        },
+    )
+    .await
+}
