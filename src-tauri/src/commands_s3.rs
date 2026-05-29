@@ -4,6 +4,23 @@ use crate::error::Result;
 use crate::s3::{BucketInfo, ConnectionLike, ListPage, ObjectInfo, ObjectMetadata, ObjectPreview, S3Client};
 use crate::state::AppState;
 
+fn explicit_buckets_from_filter(filter: Option<&str>) -> Option<Vec<BucketInfo>> {
+    let raw = filter?;
+    let explicit = crate::connections::parse_bucket_filter(raw);
+    if explicit.is_empty() {
+        return None;
+    }
+    Some(
+        explicit
+            .into_iter()
+            .map(|name| BucketInfo {
+                name,
+                creation_date: None,
+            })
+            .collect(),
+    )
+}
+
 #[tauri::command]
 pub async fn list_buckets(
     connection_id: String,
@@ -15,14 +32,8 @@ pub async fn list_buckets(
     // separated), use those directly. This is required for scoped credentials
     // (e.g. a Cloudflare R2 token limited to specific buckets) which are not
     // allowed to call the account-wide ListBuckets API.
-    if let Some(filter) = conn.bucket_filter.as_ref() {
-        let explicit = crate::connections::parse_bucket_filter(filter);
-        if !explicit.is_empty() {
-            return Ok(explicit
-                .into_iter()
-                .map(|name| BucketInfo { name, creation_date: None })
-                .collect());
-        }
+    if let Some(explicit) = explicit_buckets_from_filter(conn.bucket_filter.as_deref()) {
+        return Ok(explicit);
     }
 
     let client = S3Client::from_connection(&ConnectionLike::from(&conn)).await?;
@@ -281,28 +292,9 @@ pub async fn head_object_content_types(
 /// themselves are not yielded.
 #[tauri::command]
 pub async fn walk_local_files(local_dir: String) -> Result<Vec<LocalFileEntry>> {
-    use walkdir::WalkDir;
-
     let root = std::path::PathBuf::from(&local_dir);
     let entries = tokio::task::spawn_blocking(move || -> Result<Vec<LocalFileEntry>> {
-        let mut out = Vec::new();
-        for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let abs = entry.path().to_path_buf();
-            let rel = abs
-                .strip_prefix(&root)
-                .map(|p| p.to_string_lossy().replace('\\', "/"))
-                .unwrap_or_default();
-            let size = abs.metadata().map(|m| m.len()).unwrap_or(0);
-            out.push(LocalFileEntry {
-                absolute_path: abs.to_string_lossy().into_owned(),
-                relative_path: rel,
-                size,
-            });
-        }
-        Ok(out)
+        collect_local_files(&root)
     })
     .await
     .map_err(|e| crate::error::Error::Other(e.to_string()))??;
@@ -315,4 +307,72 @@ pub struct LocalFileEntry {
     pub absolute_path: String,
     pub relative_path: String,
     pub size: u64,
+}
+
+fn collect_local_files(root: &std::path::Path) -> Result<Vec<LocalFileEntry>> {
+    use walkdir::WalkDir;
+
+    let mut out = Vec::new();
+    for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let abs = entry.path().to_path_buf();
+        let rel = abs
+            .strip_prefix(root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        let size = abs.metadata().map(|m| m.len()).unwrap_or(0);
+        out.push(LocalFileEntry {
+            absolute_path: abs.to_string_lossy().into_owned(),
+            relative_path: rel,
+            size,
+        });
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_local_files, explicit_buckets_from_filter};
+
+    #[test]
+    fn explicit_buckets_from_filter_returns_none_for_missing_or_empty_filter() {
+        assert!(explicit_buckets_from_filter(None).is_none());
+        assert!(explicit_buckets_from_filter(Some("   , ;\n\t")).is_none());
+    }
+
+    #[test]
+    fn explicit_buckets_from_filter_parses_and_preserves_order() {
+        let out = explicit_buckets_from_filter(Some("alpha, beta;gamma\n delta"))
+            .expect("should parse explicit buckets");
+        let names: Vec<&str> = out.iter().map(|b| b.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "beta", "gamma", "delta"]);
+        assert!(out.iter().all(|b| b.creation_date.is_none()));
+    }
+
+    #[test]
+    fn collect_local_files_returns_relative_paths_and_sizes() {
+        let root = std::env::temp_dir().join(format!(
+            "bucketdock-walk-files-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(root.join("nested/child")).expect("create dirs");
+
+        let top = root.join("top.txt");
+        let nested = root.join("nested/child/data.bin");
+        std::fs::write(&top, b"abc").expect("write top file");
+        std::fs::write(&nested, b"abcdef").expect("write nested file");
+
+        let mut out = collect_local_files(&root).expect("collect files");
+        out.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].relative_path, "nested/child/data.bin");
+        assert_eq!(out[0].size, 6);
+        assert_eq!(out[1].relative_path, "top.txt");
+        assert_eq!(out[1].size, 3);
+
+        std::fs::remove_dir_all(&root).expect("cleanup temp tree");
+    }
 }

@@ -8,6 +8,7 @@ use crate::s3::{ConnectionLike, S3Client};
 use crate::state::AppState;
 
 const TRANSFER_EVENT: &str = "transfer://progress";
+const DELETE_TRACKED_CHUNK: usize = 500;
 
 #[derive(Clone, Serialize)]
 struct TransferProgress<'a> {
@@ -29,6 +30,32 @@ fn emit(app: &AppHandle, id: &str, status: &str, loaded: u64, total: u64, error:
             error,
         },
     );
+}
+
+fn copy_download_scaled(total: u64, loaded: u64) -> u64 {
+    if total > 0 {
+        loaded.min(total) / 2
+    } else {
+        loaded
+    }
+}
+
+fn copy_upload_scaled(total: u64, uploaded: u64) -> u64 {
+    let half = total / 2;
+    if total > 0 {
+        half + (uploaded.min(total) / 2)
+    } else {
+        half + uploaded
+    }
+}
+
+#[cfg(test)]
+fn chunk_count(total_items: usize, chunk_size: usize) -> usize {
+    if total_items == 0 {
+        0
+    } else {
+        total_items.div_ceil(chunk_size)
+    }
 }
 
 /// Run an async operation as a cancellable task, registering its abort handle
@@ -234,7 +261,7 @@ pub async fn copy_object_tracked(
             loaded += chunk.len() as u64;
             // First half of progress = download phase.
             let half = total.max(loaded) * 1 / 2;
-            let scaled = if total > 0 { loaded.min(total) / 2 } else { loaded };
+            let scaled = copy_download_scaled(total, loaded);
             if loaded - last_emit >= 256 * 1024 {
                 emit(&app, &id, "running", scaled, total.max(loaded).max(half), None);
                 last_emit = loaded;
@@ -249,11 +276,7 @@ pub async fn copy_object_tracked(
         let upload_res = dst_client
             .upload_file_with_progress(&dst_bucket, &dst_key, &tmp_str, |up_loaded| {
                 // Second half of progress = upload phase.
-                let scaled = if total > 0 {
-                    half + (up_loaded.min(total) / 2)
-                } else {
-                    half + up_loaded
-                };
+                let scaled = copy_upload_scaled(total, up_loaded);
                 emit(&app, &id, "running", scaled, total.max(loaded), None);
             })
             .await;
@@ -321,9 +344,8 @@ pub async fn delete_tracked(
             // S3 DeleteObjects accepts up to 1000 keys per call. We chunk
             // smaller than that on purpose so progress events arrive
             // frequently and a cancel takes effect within one round-trip.
-            const CHUNK: usize = 500;
             let mut loaded: u64 = 0;
-            for chunk in all_keys.chunks(CHUNK) {
+            for chunk in all_keys.chunks(DELETE_TRACKED_CHUNK) {
                 client.delete_objects(&bucket, chunk.to_vec()).await?;
                 loaded += chunk.len() as u64;
                 emit(&app, &id, "running", loaded, total, None);
@@ -332,4 +354,51 @@ pub async fn delete_tracked(
         },
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{chunk_count, copy_download_scaled, copy_upload_scaled, DELETE_TRACKED_CHUNK};
+
+    #[test]
+    fn copy_download_scaled_is_bounded_by_half_total() {
+        assert_eq!(copy_download_scaled(100, 0), 0);
+        assert_eq!(copy_download_scaled(100, 50), 25);
+        assert_eq!(copy_download_scaled(100, 100), 50);
+        assert_eq!(copy_download_scaled(100, 200), 50);
+    }
+
+    #[test]
+    fn copy_upload_scaled_stays_within_second_half() {
+        assert_eq!(copy_upload_scaled(100, 0), 50);
+        assert_eq!(copy_upload_scaled(100, 20), 60);
+        assert_eq!(copy_upload_scaled(100, 100), 100);
+        assert_eq!(copy_upload_scaled(100, 200), 100);
+    }
+
+    #[test]
+    fn copy_scaled_progress_is_monotonic() {
+        let mut prev_down = 0;
+        for loaded in [0_u64, 1, 20, 50, 100, 150] {
+            let next = copy_download_scaled(100, loaded);
+            assert!(next >= prev_down);
+            prev_down = next;
+        }
+
+        let mut prev_up = 50;
+        for uploaded in [0_u64, 1, 20, 50, 100, 150] {
+            let next = copy_upload_scaled(100, uploaded);
+            assert!(next >= prev_up);
+            prev_up = next;
+        }
+    }
+
+    #[test]
+    fn delete_chunk_count_matches_expected_round_trips() {
+        assert_eq!(chunk_count(0, DELETE_TRACKED_CHUNK), 0);
+        assert_eq!(chunk_count(1, DELETE_TRACKED_CHUNK), 1);
+        assert_eq!(chunk_count(500, DELETE_TRACKED_CHUNK), 1);
+        assert_eq!(chunk_count(501, DELETE_TRACKED_CHUNK), 2);
+        assert_eq!(chunk_count(1500, DELETE_TRACKED_CHUNK), 3);
+    }
 }

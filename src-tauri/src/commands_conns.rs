@@ -170,3 +170,43 @@ fn humanize_s3_error(err: Error, bucket: Option<&str>) -> Error {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::humanize_s3_error;
+    use crate::error::Error;
+
+    #[test]
+    fn humanizes_access_denied_with_bucket_filter_hint() {
+        let err = Error::S3("AccessDenied: forbidden".into());
+        let out = humanize_s3_error(err, None).to_string();
+        assert!(out.contains("Access denied"));
+        assert!(out.contains("Buckets field"));
+    }
+
+    #[test]
+    fn humanizes_signature_mismatch() {
+        let err = Error::S3("SignatureDoesNotMatch".into());
+        let out = humanize_s3_error(err, None).to_string();
+        assert!(out.contains("Signature mismatch"));
+        assert!(out.contains("Secret Access Key"));
+    }
+
+    #[test]
+    fn humanizes_missing_bucket_with_bucket_name() {
+        let err = Error::S3("NoSuchBucket".into());
+        let out = humanize_s3_error(err, Some("docs-prod")).to_string();
+        assert!(out.contains("docs-prod"));
+        assert!(out.contains("not found"));
+    }
+
+    #[test]
+    fn leaves_unclassified_errors_unchanged() {
+        let err = Error::S3("totally new provider failure".into());
+        let out = humanize_s3_error(err, None);
+        match out {
+            Error::S3(msg) => assert_eq!(msg, "totally new provider failure"),
+            other => panic!("expected S3 error passthrough, got: {}", other),
+        }
+    }
+}
+

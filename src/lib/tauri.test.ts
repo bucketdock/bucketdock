@@ -116,6 +116,50 @@ describe("delete / mutate commands target the correct backend", () => {
       transferId: "tx-2",
     });
   });
+
+  it("listObjects sends null continuationToken when omitted", async () => {
+    await tauri.listObjects("c", "b", "p/");
+    expect(invokeMock).toHaveBeenLastCalledWith("list_objects", {
+      connectionId: "c",
+      bucket: "b",
+      prefix: "p/",
+      continuationToken: null,
+    });
+  });
+
+  it("getPresignedUrl defaults expiresInSecs to 3600", async () => {
+    await tauri.getPresignedUrl("c", "b", "k");
+    expect(invokeMock).toHaveBeenLastCalledWith("get_presigned_url", {
+      connectionId: "c",
+      bucket: "b",
+      key: "k",
+      expiresInSecs: 3600,
+    });
+  });
+
+  it("getPresignedUrl forwards explicit expiry", async () => {
+    await tauri.getPresignedUrl("c", "b", "k", 42);
+    expect(invokeMock).toHaveBeenLastCalledWith("get_presigned_url", {
+      connectionId: "c",
+      bucket: "b",
+      key: "k",
+      expiresInSecs: 42,
+    });
+  });
+
+  it("walkLocalFiles and headObjectContentTypes route to the right backend commands", async () => {
+    await tauri.walkLocalFiles("/tmp/tree");
+    expect(invokeMock).toHaveBeenLastCalledWith("walk_local_files", {
+      localDir: "/tmp/tree",
+    });
+
+    await tauri.headObjectContentTypes("c", "b", ["a", "b/c"]);
+    expect(invokeMock).toHaveBeenLastCalledWith("head_object_content_types", {
+      connectionId: "c",
+      bucket: "b",
+      keys: ["a", "b/c"],
+    });
+  });
 });
 
 describe("error normalization", () => {
@@ -142,5 +186,28 @@ describe("error normalization", () => {
   it("falls back to stringifying truly opaque errors", async () => {
     invokeMock.mockRejectedValueOnce("plain string error");
     await expect(tauri.listBuckets("c")).rejects.toThrow("plain string error");
+  });
+
+  it("falls back to stringifying object-shaped errors without a message", async () => {
+    invokeMock.mockRejectedValueOnce({ detail: "opaque" });
+    await expect(tauri.listBuckets("c")).rejects.toThrow("[object Object]");
+  });
+});
+
+describe("isTauri environment check", () => {
+  it("returns false when Tauri internals are absent", () => {
+    expect(tauri.isTauri()).toBe(false);
+  });
+
+  it("returns true when __TAURI_INTERNALS__ is present on window", () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      value: {},
+      configurable: true,
+    });
+
+    expect(tauri.isTauri()).toBe(true);
+
+    // Cleanup avoids leaking globals between tests.
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   });
 });

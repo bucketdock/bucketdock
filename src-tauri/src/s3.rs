@@ -977,6 +977,28 @@ impl S3Client {
 mod tests {
     use super::*;
 
+    #[derive(Debug, thiserror::Error)]
+    #[error("inner-cause")]
+    struct InnerCause;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("outer-layer")]
+    struct OuterCause {
+        #[source]
+        source: InnerCause,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("same-message")]
+    struct DuplicateOuter {
+        #[source]
+        source: DuplicateInner,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("same-message")]
+    struct DuplicateInner;
+
     #[test]
     fn percent_encode_preserves_slash() {
         assert_eq!(percent_encode_key("a/b/c"), "a/b/c");
@@ -1061,5 +1083,28 @@ mod tests {
     fn classify_listing_entry_keeps_regular_files() {
         assert_eq!(classify_listing_entry("photos/a.jpg", "photos/"), (false, false));
         assert_eq!(classify_listing_entry("readme.md", ""), (false, false));
+    }
+
+    #[test]
+    fn fmt_sdk_err_includes_source_chain_messages() {
+        let err = fmt_sdk_err(OuterCause { source: InnerCause }).to_string();
+        assert!(err.contains("outer-layer"));
+        assert!(err.contains("inner-cause"));
+    }
+
+    #[test]
+    fn fmt_sdk_err_deduplicates_repeated_messages() {
+        let err = fmt_sdk_err(DuplicateOuter {
+            source: DuplicateInner,
+        })
+        .to_string();
+        assert_eq!(err.matches("same-message").count(), 1);
+    }
+
+    #[test]
+    fn aws_dt_to_chrono_converts_epoch_seconds() {
+        let dt = aws_smithy_types::DateTime::from_secs(1_735_689_600);
+        let out = aws_dt_to_chrono(&dt).expect("timestamp should convert");
+        assert_eq!(out.timestamp(), 1_735_689_600);
     }
 }

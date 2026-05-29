@@ -179,3 +179,72 @@ describe("useAppStore back/forward history", () => {
     expect(st.forward).toEqual([]);
   });
 });
+
+describe("useAppStore connection CRUD", () => {
+  const base = {
+    provider: "aws" as const,
+    endpoint: null,
+    region: "us-east-1",
+    access_key_id: "AKIA",
+    bucket_filter: null,
+  };
+
+  it("addConnectionLocal appends without mutating existing entries", () => {
+    const c1 = { id: "c1", name: "Conn 1", ...base };
+    const c2 = { id: "c2", name: "Conn 2", ...base };
+
+    useAppStore.getState().addConnectionLocal(c1);
+    const firstRef = useAppStore.getState().connections[0];
+
+    useAppStore.getState().addConnectionLocal(c2);
+    const st = useAppStore.getState();
+
+    expect(st.connections).toHaveLength(2);
+    expect(st.connections[0]).toBe(firstRef);
+    expect(st.connections[1]).toEqual(c2);
+  });
+
+  it("updateConnectionLocal replaces the targeted connection by id only", () => {
+    const c1 = { id: "c1", name: "Conn 1", ...base };
+    const c2 = { id: "c2", name: "Conn 2", ...base };
+
+    useAppStore.getState().setConnections([c1, c2]);
+    useAppStore
+      .getState()
+      .updateConnectionLocal({ ...c1, name: "Conn 1 Updated" });
+
+    const st = useAppStore.getState();
+    expect(st.connections).toHaveLength(2);
+    expect(st.connections[0].name).toBe("Conn 1 Updated");
+    expect(st.connections[1]).toEqual(c2);
+  });
+
+  it("removeConnectionLocal drops only the targeted id and clears selection if needed", () => {
+    const c1 = { id: "c1", name: "Conn 1", ...base };
+    const c2 = { id: "c2", name: "Conn 2", ...base };
+
+    useAppStore.setState({
+      connections: [c1, c2],
+      selectedConnectionId: "c1",
+      selectedBucket: "bucket-a",
+    });
+    useAppStore.getState().removeConnectionLocal("c1");
+
+    let st = useAppStore.getState();
+    expect(st.connections).toHaveLength(1);
+    expect(st.connections[0].id).toBe("c2");
+    expect(st.selectedConnectionId).toBeNull();
+    expect(st.selectedBucket).toBeNull();
+
+    useAppStore.setState({
+      connections: [c1, c2],
+      selectedConnectionId: "c2",
+      selectedBucket: "bucket-b",
+    });
+    useAppStore.getState().removeConnectionLocal("c1");
+
+    st = useAppStore.getState();
+    expect(st.selectedConnectionId).toBe("c2");
+    expect(st.selectedBucket).toBe("bucket-b");
+  });
+});
