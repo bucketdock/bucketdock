@@ -512,7 +512,7 @@ describe("ObjectBrowser Name column resizing", () => {
     render(<ObjectBrowser />);
     await screen.findByText("report.pdf");
 
-    const resizeHandle = screen.getByLabelText("Resize column");
+    const resizeHandle = screen.getByLabelText("Resize Name column");
     fireEvent.mouseDown(resizeHandle, { clientX: 300 });
     fireEvent.mouseMove(window, { clientX: 420 });
     fireEvent.mouseUp(window);
@@ -522,6 +522,115 @@ describe("ObjectBrowser Name column resizing", () => {
     );
     expect(stored).not.toBeNull();
     expect(Number(stored)).toBeGreaterThan(360);
+  });
+
+  it("persists resized Type/Storage/Size/Modified column widths", async () => {
+    render(<ObjectBrowser />);
+    await screen.findByText("report.pdf");
+
+    const cases = [
+      {
+        label: "Resize Type column",
+        key: "bucketdock.objectBrowser.typeColWidth",
+        baseline: 140,
+      },
+      {
+        label: "Resize Storage column",
+        key: "bucketdock.objectBrowser.storageColWidth",
+        baseline: 140,
+      },
+      {
+        label: "Resize Size column",
+        key: "bucketdock.objectBrowser.sizeColWidth",
+        baseline: 110,
+      },
+      {
+        label: "Resize Modified column",
+        key: "bucketdock.objectBrowser.modifiedColWidth",
+        baseline: 170,
+      },
+    ] as const;
+
+    for (const c of cases) {
+      const resizeHandle = screen.getByLabelText(c.label);
+      fireEvent.mouseDown(resizeHandle, { clientX: 200 });
+      fireEvent.mouseMove(window, { clientX: 260 });
+      fireEvent.mouseUp(window);
+
+      const stored = window.localStorage.getItem(c.key);
+      expect(stored).not.toBeNull();
+      expect(Number(stored)).toBeGreaterThan(c.baseline);
+    }
+  });
+});
+
+describe("ObjectBrowser table layout stability", () => {
+  it("keeps header checkbox column width fixed while resizing Name", async () => {
+    render(<ObjectBrowser />);
+    await screen.findByText("report.pdf");
+
+    const selectAll = screen.getByLabelText("Select all");
+    const selectAllHeader = selectAll.closest("th");
+    expect(selectAllHeader).not.toBeNull();
+    expect(selectAllHeader).toHaveStyle({ width: "44px" });
+
+    const nameResize = screen.getByLabelText("Resize Name column");
+    fireEvent.mouseDown(nameResize, { clientX: 320 });
+    fireEvent.mouseMove(window, { clientX: 460 });
+    fireEvent.mouseUp(window);
+
+    expect(selectAllHeader).toHaveStyle({ width: "44px" });
+  });
+
+  it("shows folder loading inline in the folder row without adding an extra loading row", async () => {
+    const user = userEvent.setup();
+    let resolveChildren:
+      | ((value: { folders: string[]; files: unknown[] }) => void)
+      | null = null;
+    listObjectsMock.mockImplementation(
+      async (_c: string, _b: string, prefix: string) => {
+        if (prefix === "") {
+          return {
+            folders: ["photos/"],
+            files: [
+              {
+                key: "report.pdf",
+                size: 1024,
+                last_modified: null,
+                etag: null,
+                storage_class: null,
+              },
+            ],
+          };
+        }
+        if (prefix === "photos/") {
+          return await new Promise((resolve) => {
+            resolveChildren = resolve;
+          });
+        }
+        return { folders: [], files: [] };
+      },
+    );
+
+    render(<ObjectBrowser />);
+    await screen.findByText("report.pdf");
+    const rowsBefore = document.querySelectorAll("tbody tr").length;
+    expect(rowsBefore).toBe(2);
+
+    await user.click(await screen.findByTestId("disclosure-photos/"));
+
+    const folderRow = await screen.findByTestId("folder-row-photos/");
+    expect(folderRow).toHaveTextContent("Loading…");
+    expect(document.querySelectorAll("tbody tr").length).toBe(2);
+
+    await act(async () => {
+      resolveChildren?.({ folders: ["photos/2024/"], files: [] });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("folder-row-photos/")).not.toHaveTextContent(
+        "Loading…",
+      ),
+    );
   });
 });
 

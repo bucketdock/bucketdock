@@ -92,21 +92,61 @@ export function folderDisplayName(
   return folderKey.slice(parentPrefix.length).replace(/\/$/, "");
 }
 
-// ── Name column resizing ─────────────────────────────────────────────────────
-// Persisted width (pixels) of the Name column. Finder remembers column widths
-// per window; we keep a single user-wide value because the browser only has
-// one such table.
-const NAME_COL_MIN = 160;
-const NAME_COL_MAX = 900;
-const NAME_COL_DEFAULT = 360;
-const NAME_COL_STORAGE_KEY = "bucketdock.objectBrowser.nameColWidth";
+// ── Table column resizing ────────────────────────────────────────────────────
+// Persisted widths (pixels) for sortable table columns. We keep one user-wide
+// value per column so the object browser remembers layout adjustments.
+const CHECKBOX_COL_WIDTH = 44;
+const ACTIONS_COL_WIDTH = 36;
 
-function readStoredNameWidth(): number {
-  if (typeof window === "undefined") return NAME_COL_DEFAULT;
-  const raw = window.localStorage.getItem(NAME_COL_STORAGE_KEY);
-  const n = raw ? Number.parseInt(raw, 10) : NaN;
-  if (!Number.isFinite(n)) return NAME_COL_DEFAULT;
-  return Math.min(NAME_COL_MAX, Math.max(NAME_COL_MIN, n));
+const COLUMN_WIDTH_DEFAULTS: Record<SortKey, number> = {
+  name: 360,
+  type: 140,
+  storage: 140,
+  size: 110,
+  modified: 170,
+};
+
+const COLUMN_WIDTH_MIN: Record<SortKey, number> = {
+  name: 160,
+  type: 90,
+  storage: 96,
+  size: 84,
+  modified: 120,
+};
+
+const COLUMN_WIDTH_MAX: Record<SortKey, number> = {
+  name: 900,
+  type: 420,
+  storage: 420,
+  size: 260,
+  modified: 320,
+};
+
+const COLUMN_WIDTH_STORAGE_KEYS: Record<SortKey, string> = {
+  name: "bucketdock.objectBrowser.nameColWidth",
+  type: "bucketdock.objectBrowser.typeColWidth",
+  storage: "bucketdock.objectBrowser.storageColWidth",
+  size: "bucketdock.objectBrowser.sizeColWidth",
+  modified: "bucketdock.objectBrowser.modifiedColWidth",
+};
+
+function clampColumnWidth(col: SortKey, n: number): number {
+  return Math.min(COLUMN_WIDTH_MAX[col], Math.max(COLUMN_WIDTH_MIN[col], n));
+}
+
+function readStoredColumnWidths(): Record<SortKey, number> {
+  const fallback = { ...COLUMN_WIDTH_DEFAULTS };
+  if (typeof window === "undefined") return fallback;
+
+  const cols: SortKey[] = ["name", "type", "storage", "size", "modified"];
+  for (const col of cols) {
+    const raw = window.localStorage.getItem(COLUMN_WIDTH_STORAGE_KEYS[col]);
+    const n = raw ? Number.parseInt(raw, 10) : NaN;
+    fallback[col] = Number.isFinite(n)
+      ? clampColumnWidth(col, n)
+      : COLUMN_WIDTH_DEFAULTS[col];
+  }
+  return fallback;
 }
 
 /**
@@ -220,7 +260,7 @@ function SortableHeader({
         <span
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize column"
+          aria-label={`Resize ${label} column`}
           onMouseDown={onResizeStart}
           onClick={(e) => e.stopPropagation()}
           className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize select-none hover:bg-blue-500/40 active:bg-blue-500/60"
@@ -291,31 +331,42 @@ export default function ObjectBrowser() {
     Record<string, FolderSize>
   >({});
 
-  // ── Name column width ─────────────────────────────────────────────────────
-  const [nameColWidth, setNameColWidth] = React.useState<number>(() =>
-    readStoredNameWidth(),
-  );
+  // ── Column widths ─────────────────────────────────────────────────────────
+  const [columnWidths, setColumnWidths] = React.useState<
+    Record<SortKey, number>
+  >(() => readStoredColumnWidths());
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(NAME_COL_STORAGE_KEY, String(nameColWidth));
-  }, [nameColWidth]);
+    const cols: SortKey[] = ["name", "type", "storage", "size", "modified"];
+    for (const col of cols) {
+      window.localStorage.setItem(
+        COLUMN_WIDTH_STORAGE_KEYS[col],
+        String(columnWidths[col]),
+      );
+    }
+  }, [columnWidths]);
   const resizeStateRef = React.useRef<{
+    col: SortKey;
     startX: number;
     startW: number;
   } | null>(null);
-  const onNameResizeStart = React.useCallback(
-    (e: React.MouseEvent) => {
+  const onColumnResizeStart = React.useCallback(
+    (col: SortKey) => (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      resizeStateRef.current = { startX: e.clientX, startW: nameColWidth };
+      resizeStateRef.current = {
+        col,
+        startX: e.clientX,
+        startW: columnWidths[col],
+      };
       const onMove = (ev: MouseEvent) => {
         const st = resizeStateRef.current;
         if (!st) return;
-        const next = Math.min(
-          NAME_COL_MAX,
-          Math.max(NAME_COL_MIN, st.startW + (ev.clientX - st.startX)),
+        const next = clampColumnWidth(
+          st.col,
+          st.startW + (ev.clientX - st.startX),
         );
-        setNameColWidth(next);
+        setColumnWidths((prev) => ({ ...prev, [st.col]: next }));
       };
       const onUp = () => {
         resizeStateRef.current = null;
@@ -329,7 +380,7 @@ export default function ObjectBrowser() {
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [nameColWidth],
+    [columnWidths],
   );
 
   // ── Disclosure-triangle state ──────────────────────────────────────────────
@@ -1220,6 +1271,7 @@ export default function ObjectBrowser() {
     const isSelected = selection.has(folder);
     const child = expanded[folder];
     const isOpen = !!child;
+    const childLoading = !!child?.loading;
     return (
       <React.Fragment key={folder}>
         <tr
@@ -1243,7 +1295,8 @@ export default function ObjectBrowser() {
           data-testid={`folder-row-${folder}`}
         >
           <td
-            className="px-3 py-1"
+            className="py-1 text-center"
+            style={{ width: CHECKBOX_COL_WIDTH }}
             onClick={(e) => {
               e.stopPropagation();
               toggleCheckbox(folder);
@@ -1285,6 +1338,12 @@ export default function ObjectBrowser() {
               </button>
               <Folder className="w-4 h-4 text-yellow-500 shrink-0 ml-0.5" />
               <TruncatedName>{displayName}</TruncatedName>
+              {childLoading && (
+                <span className="flex min-w-0 items-center gap-1 text-neutral-500 shrink">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span className="min-w-0 truncate text-xs">Loading…</span>
+                </span>
+              )}
             </div>
           </td>
           <td className="px-3 py-1 text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
@@ -1306,7 +1365,10 @@ export default function ObjectBrowser() {
           <td className="px-3 py-1 text-right text-neutral-400 whitespace-nowrap">
             —
           </td>
-          <td className="px-1.5 py-1 text-right">
+          <td
+            className="px-1.5 py-1 text-right"
+            style={{ width: ACTIONS_COL_WIDTH }}
+          >
             <button
               type="button"
               onClick={(e) => {
@@ -1366,7 +1428,8 @@ export default function ObjectBrowser() {
         )}
       >
         <td
-          className="px-3 py-1"
+          className="py-1 text-center"
+          style={{ width: CHECKBOX_COL_WIDTH }}
           onClick={(e) => {
             e.stopPropagation();
             toggleCheckbox(file.key);
@@ -1409,7 +1472,10 @@ export default function ObjectBrowser() {
             <span className="text-neutral-400">—</span>
           )}
         </td>
-        <td className="px-1.5 py-1 text-right">
+        <td
+          className="px-1.5 py-1 text-right"
+          style={{ width: ACTIONS_COL_WIDTH }}
+        >
           <button
             type="button"
             onClick={(e) => {
@@ -1446,19 +1512,7 @@ export default function ObjectBrowser() {
     depth: number,
   ): React.ReactNode => {
     if (listing.loading) {
-      return (
-        <tr key={`${parentFolder}-loading`} aria-live="polite">
-          <td className="px-3 py-1" />
-          <td className="px-3 py-1" colSpan={6}>
-            <div
-              className="flex items-center gap-2 text-xs text-neutral-500"
-              style={indentPx(depth)}
-            >
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
-            </div>
-          </td>
-        </tr>
-      );
+      return null;
     }
     if (listing.error) {
       return (
@@ -1781,26 +1835,38 @@ export default function ObjectBrowser() {
           <table className="w-full table-fixed text-[13px]">
             <thead>
               <tr className="border-b border-black/8 dark:border-white/8">
-                <th className="w-10 px-3 py-2" />
+                <th className="py-2" style={{ width: CHECKBOX_COL_WIDTH }} />
                 <th
                   className="text-left px-3 py-2 font-medium text-neutral-500 text-xs"
-                  style={{ width: nameColWidth }}
+                  style={{ width: columnWidths.name }}
                 >
                   Name
                 </th>
-                <th className="text-left px-3 py-2 font-medium text-neutral-500 text-xs w-20">
+                <th
+                  className="text-left px-3 py-2 font-medium text-neutral-500 text-xs"
+                  style={{ width: columnWidths.type }}
+                >
                   Type
                 </th>
-                <th className="text-left px-3 py-2 font-medium text-neutral-500 text-xs w-28">
+                <th
+                  className="text-left px-3 py-2 font-medium text-neutral-500 text-xs"
+                  style={{ width: columnWidths.storage }}
+                >
                   Storage
                 </th>
-                <th className="text-right px-3 py-2 font-medium text-neutral-500 text-xs w-24">
+                <th
+                  className="text-right px-3 py-2 font-medium text-neutral-500 text-xs"
+                  style={{ width: columnWidths.size }}
+                >
                   Size
                 </th>
-                <th className="text-right px-3 py-2 font-medium text-neutral-500 text-xs w-36">
+                <th
+                  className="text-right px-3 py-2 font-medium text-neutral-500 text-xs"
+                  style={{ width: columnWidths.modified }}
+                >
                   Modified
                 </th>
-                <th className="w-8" />
+                <th style={{ width: ACTIONS_COL_WIDTH }} />
               </tr>
             </thead>
             <tbody>
@@ -1853,7 +1919,10 @@ export default function ObjectBrowser() {
           <table className="w-full table-fixed text-[13px]">
             <thead className="sticky top-0 z-1 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm">
               <tr className="border-b border-black/8 dark:border-white/8">
-                <th className="w-10 px-3 py-2">
+                <th
+                  className="py-2 text-center"
+                  style={{ width: CHECKBOX_COL_WIDTH }}
+                >
                   <input
                     type="checkbox"
                     className="checkbox-mac"
@@ -1883,8 +1952,8 @@ export default function ObjectBrowser() {
                     }
                   }}
                   align="left"
-                  style={{ width: nameColWidth }}
-                  onResizeStart={onNameResizeStart}
+                  style={{ width: columnWidths.name }}
+                  onResizeStart={onColumnResizeStart("name")}
                 />
                 <SortableHeader
                   label="Type"
@@ -1900,7 +1969,8 @@ export default function ObjectBrowser() {
                     }
                   }}
                   align="left"
-                  width="w-20"
+                  style={{ width: columnWidths.type }}
+                  onResizeStart={onColumnResizeStart("type")}
                 />
                 <SortableHeader
                   label="Storage"
@@ -1916,7 +1986,8 @@ export default function ObjectBrowser() {
                     }
                   }}
                   align="left"
-                  width="w-28"
+                  style={{ width: columnWidths.storage }}
+                  onResizeStart={onColumnResizeStart("storage")}
                 />
                 <SortableHeader
                   label="Size"
@@ -1932,7 +2003,8 @@ export default function ObjectBrowser() {
                     }
                   }}
                   align="right"
-                  width="w-24"
+                  style={{ width: columnWidths.size }}
+                  onResizeStart={onColumnResizeStart("size")}
                 />
                 <SortableHeader
                   label="Modified"
@@ -1948,9 +2020,10 @@ export default function ObjectBrowser() {
                     }
                   }}
                   align="right"
-                  width="w-36"
+                  style={{ width: columnWidths.modified }}
+                  onResizeStart={onColumnResizeStart("modified")}
                 />
-                <th className="w-8" />
+                <th style={{ width: ACTIONS_COL_WIDTH }} />
               </tr>
             </thead>
             <tbody>
