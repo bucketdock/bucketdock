@@ -16,7 +16,7 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <body className="h-full">
         {children}
-        <Toaster richColors position="bottom-right" />
+        <Toaster theme="system" position="bottom-right" />
       </body>
     </html>
   );

@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -170,6 +171,19 @@ describe("ObjectBrowser top toolbar", () => {
     await screen.findByRole("button", { name: "Back" });
     expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
+  });
+
+  it("switches from no bucket to a bucket without runtime hook-order errors", async () => {
+    seedStore();
+    useAppStore.setState({ selectedBucket: null });
+
+    render(<ObjectBrowser />);
+
+    await act(async () => {
+      useAppStore.setState({ selectedBucket: "my-bucket" });
+    });
+
+    expect(await screen.findByText("report.pdf")).toBeInTheDocument();
   });
 
   it("renders the bucket name as the current folder when at root", async () => {
@@ -424,10 +438,24 @@ describe("ObjectBrowser context menu", () => {
 
     expect(await screen.findByText("Copy to…")).toBeInTheDocument();
     expect(screen.getByText("Move to…")).toBeInTheDocument();
-    expect(screen.getByText("Calculate Folder Size")).toBeInTheDocument();
+    expect(screen.getByText("Folder Size")).toBeInTheDocument();
   });
 
-  it("does not show 'Calculate Folder Size' for file rows", async () => {
+  it("shows the same folder context menu for an expanded subfolder row", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await user.click(await screen.findByTestId("disclosure-photos/"));
+    const subfolderName = await screen.findByText("2024");
+    await user.pointer({ keys: "[MouseRight>]", target: subfolderName });
+
+    expect(await screen.findByText("Open")).toBeInTheDocument();
+    expect(screen.getByText("Folder Size")).toBeInTheDocument();
+    expect(screen.getByText("Copy to…")).toBeInTheDocument();
+    expect(screen.getByText("Move to…")).toBeInTheDocument();
+  });
+
+  it("does not show 'Folder Size' for file rows", async () => {
     const user = userEvent.setup();
     render(<ObjectBrowser />);
 
@@ -437,7 +465,175 @@ describe("ObjectBrowser context menu", () => {
       target: fileName,
     });
 
-    expect(screen.queryByText("Calculate Folder Size")).not.toBeInTheDocument();
+    expect(screen.queryByText("Folder Size")).not.toBeInTheDocument();
+  });
+
+  it("keeps row context-menu labels single-item even when multiple rows are selected", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    await user.click(screen.getByLabelText("Select report.pdf"));
+    await user.click(screen.getByLabelText("Select photos"));
+
+    const fileName = await screen.findByText("report.pdf");
+    await user.pointer({ keys: "[MouseRight>]", target: fileName });
+
+    expect(await screen.findByText("Rename")).toBeInTheDocument();
+    expect(screen.getByText("Delete")).toBeInTheDocument();
+    expect(screen.queryByText("Copy 2 to…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Move 2 to…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete 2 items")).not.toBeInTheDocument();
+  });
+
+  it("executes row Delete for only that row even when multiple rows are selected", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    await user.click(screen.getByLabelText("Select report.pdf"));
+    await user.click(screen.getByLabelText("Select photos"));
+
+    const fileName = await screen.findByText("report.pdf");
+    await user.pointer({ keys: "[MouseRight>]", target: fileName });
+    await user.click(await screen.findByText("Delete"));
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(enqueueDeleteMock).toHaveBeenCalledTimes(1));
+    expect(enqueueDeleteMock.mock.calls[0][0]).toMatchObject({
+      connectionId: "c1",
+      bucket: "my-bucket",
+      keys: ["report.pdf"],
+      prefixes: [],
+    });
+  });
+
+  it("opening a row context menu clears checked checkboxes", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    const fileCb = screen.getByLabelText(
+      "Select report.pdf",
+    ) as HTMLInputElement;
+    const folderCb = screen.getByLabelText("Select photos") as HTMLInputElement;
+
+    await user.click(fileCb);
+    await user.click(folderCb);
+    expect(fileCb.checked).toBe(true);
+    expect(folderCb.checked).toBe(true);
+
+    const fileName = await screen.findByText("report.pdf");
+    await user.pointer({ keys: "[MouseRight>]", target: fileName });
+
+    expect(await screen.findByText("Delete")).toBeInTheDocument();
+    expect(fileCb.checked).toBe(false);
+    expect(folderCb.checked).toBe(false);
+  });
+
+  it("clicking a row Actions button a second time closes its context menu", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    const actionsButtons = screen.getAllByRole("button", { name: "Actions" });
+    const fileActions = actionsButtons[1]; // first visible row after folder is report.pdf
+
+    await user.click(fileActions);
+    expect(await screen.findByText("Delete")).toBeInTheDocument();
+
+    fireEvent.click(fileActions);
+    await waitFor(() => {
+      expect(screen.queryByText("Rename")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("ObjectBrowser header bulk actions", () => {
+  it("shows selection actions disabled in the three-dots menu when nothing is selected", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    await user.click(screen.getByTestId("overflow-menu-trigger"));
+
+    const menu = await screen.findByTestId("overflow-menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "Download" }),
+    ).toBeDisabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Copy to…" }),
+    ).toBeDisabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Move to…" }),
+    ).toBeDisabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Folder size" }),
+    ).toBeDisabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Delete items" }),
+    ).toBeDisabled();
+  });
+
+  it("places 'Folder size' immediately after 'Download' in the three-dots menu", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    await user.click(screen.getByTestId("overflow-menu-trigger"));
+
+    const menu = await screen.findByTestId("overflow-menu");
+    const labels = within(menu)
+      .getAllByRole("menuitem")
+      .map((el) => el.textContent?.trim() ?? "");
+    const downloadIdx = labels.findIndex((t) => t === "Download");
+    const folderSizeIdx = labels.findIndex((t) => t === "Folder size");
+
+    expect(downloadIdx).toBeGreaterThanOrEqual(0);
+    expect(folderSizeIdx).toBe(downloadIdx + 1);
+  });
+
+  it("exposes bulk copy and move actions in the header for multi-selection", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    await user.click(screen.getByLabelText("Select report.pdf"));
+    await user.click(screen.getByLabelText("Select photos"));
+
+    await user.click(screen.getByTestId("overflow-menu-trigger"));
+    const menu = await screen.findByTestId("overflow-menu");
+
+    expect(
+      within(menu).getByRole("menuitem", { name: "Copy to…" }),
+    ).toBeEnabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Move to…" }),
+    ).toBeEnabled();
+  });
+
+  it("deletes all selected rows with the bulk selection delete flow", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    await user.click(screen.getByLabelText("Select report.pdf"));
+    await user.click(screen.getByLabelText("Select photos"));
+
+    fireEvent.keyDown(screen.getByTestId("folder-row-photos/"), {
+      key: "Delete",
+      code: "Delete",
+      bubbles: true,
+    });
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(enqueueDeleteMock).toHaveBeenCalledTimes(1));
+    expect(enqueueDeleteMock.mock.calls[0][0]).toMatchObject({
+      connectionId: "c1",
+      bucket: "my-bucket",
+      keys: ["report.pdf"],
+      prefixes: ["photos/"],
+    });
   });
 });
 
@@ -464,7 +660,7 @@ describe("ObjectBrowser folder size calculation", () => {
     render(<ObjectBrowser />);
     const folderName = await screen.findByText("photos");
     await user.pointer({ keys: "[MouseRight>]", target: folderName });
-    await user.click(await screen.findByText("Calculate Folder Size"));
+    await user.click(await screen.findByText("Folder Size"));
 
     await waitFor(() =>
       expect(listKeysUnderMock).toHaveBeenCalledWith(
@@ -491,7 +687,7 @@ describe("ObjectBrowser folder size calculation", () => {
     render(<ObjectBrowser />);
     const folderName = await screen.findByText("photos");
     await user.pointer({ keys: "[MouseRight>]", target: folderName });
-    await user.click(await screen.findByText("Calculate Folder Size"));
+    await user.click(await screen.findByText("Folder Size"));
 
     await waitFor(() =>
       expect(listKeysUnderMock).toHaveBeenCalledWith(
@@ -504,6 +700,207 @@ describe("ObjectBrowser folder size calculation", () => {
     expect(toastSuccessMock).not.toHaveBeenCalled();
     expect(toastErrorMock).not.toHaveBeenCalled();
     expect(toastDismissMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("ObjectBrowser selection / checkbox behaviour", () => {
+  it("does not toggle a row's checkbox when clicking elsewhere on the row", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    const fileName = await screen.findByText("report.pdf");
+    const checkbox = screen.getByLabelText(
+      "Select report.pdf",
+    ) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+
+    // Click the row body (the file name cell) — selection must not change.
+    await user.click(fileName);
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it("toggles selection only when the row's checkbox is clicked", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    const checkbox = screen.getByLabelText(
+      "Select report.pdf",
+    ) as HTMLInputElement;
+
+    await user.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+
+    await user.click(checkbox);
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it("header checkbox selects all visible rows, and clears them when toggled off", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    const fileCb = screen.getByLabelText(
+      "Select report.pdf",
+    ) as HTMLInputElement;
+    const folderCb = screen.getByLabelText("Select photos") as HTMLInputElement;
+    const headerCb = screen.getByLabelText("Select all") as HTMLInputElement;
+
+    expect(fileCb.checked).toBe(false);
+    expect(folderCb.checked).toBe(false);
+
+    await user.click(headerCb);
+    expect(fileCb.checked).toBe(true);
+    expect(folderCb.checked).toBe(true);
+    expect(headerCb.checked).toBe(true);
+
+    await user.click(headerCb);
+    expect(fileCb.checked).toBe(false);
+    expect(folderCb.checked).toBe(false);
+    expect(headerCb.checked).toBe(false);
+  });
+
+  it("header checkbox enters indeterminate state when a subset is selected and selects all on next click", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await screen.findByText("report.pdf");
+    const fileCb = screen.getByLabelText(
+      "Select report.pdf",
+    ) as HTMLInputElement;
+    const folderCb = screen.getByLabelText("Select photos") as HTMLInputElement;
+    const headerCb = screen.getByLabelText("Select all") as HTMLInputElement;
+
+    await user.click(fileCb);
+    expect(headerCb.checked).toBe(false);
+    expect(headerCb.indeterminate).toBe(true);
+
+    await user.click(headerCb);
+    expect(fileCb.checked).toBe(true);
+    expect(folderCb.checked).toBe(true);
+    expect(headerCb.checked).toBe(true);
+  });
+
+  it("checking a subfolder unchecks its parent folder", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await user.click(await screen.findByTestId("disclosure-photos/"));
+
+    const parentCb = screen.getByLabelText("Select photos") as HTMLInputElement;
+    const childCb = (await screen.findByLabelText(
+      "Select 2024",
+    )) as HTMLInputElement;
+
+    await user.click(parentCb);
+    expect(parentCb.checked).toBe(true);
+
+    await user.click(childCb);
+    expect(childCb.checked).toBe(true);
+    expect(parentCb.checked).toBe(false);
+  });
+
+  it("checking a parent folder unchecks selected descendants", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await user.click(await screen.findByTestId("disclosure-photos/"));
+
+    const parentCb = screen.getByLabelText("Select photos") as HTMLInputElement;
+    const childCb = (await screen.findByLabelText(
+      "Select 2024",
+    )) as HTMLInputElement;
+
+    await user.click(childCb);
+    expect(childCb.checked).toBe(true);
+
+    await user.click(parentCb);
+    expect(parentCb.checked).toBe(true);
+    expect(childCb.checked).toBe(false);
+  });
+
+  it("header checkbox affects only top-level rows and leaves subfolder selection unchanged", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await user.click(await screen.findByTestId("disclosure-photos/"));
+
+    const headerCb = screen.getByLabelText("Select all") as HTMLInputElement;
+    const topFolderCb = screen.getByLabelText(
+      "Select photos",
+    ) as HTMLInputElement;
+    const topFileCb = screen.getByLabelText(
+      "Select report.pdf",
+    ) as HTMLInputElement;
+    const childCb = (await screen.findByLabelText(
+      "Select 2024",
+    )) as HTMLInputElement;
+
+    await user.click(childCb);
+    expect(childCb.checked).toBe(true);
+    expect(headerCb.checked).toBe(false);
+
+    await user.click(headerCb);
+    expect(topFolderCb.checked).toBe(true);
+    expect(topFileCb.checked).toBe(true);
+    expect(childCb.checked).toBe(false);
+
+    // Toggling header off only clears top-level rows; it does not toggle
+    // subfolders on by itself.
+    await user.click(headerCb);
+    expect(topFolderCb.checked).toBe(false);
+    expect(topFileCb.checked).toBe(false);
+    expect(childCb.checked).toBe(false);
+
+    await user.click(childCb);
+    expect(childCb.checked).toBe(true);
+
+    await user.click(headerCb);
+    expect(topFolderCb.checked).toBe(true);
+    expect(topFileCb.checked).toBe(true);
+    expect(childCb.checked).toBe(false);
+
+    await user.click(headerCb);
+    expect(topFolderCb.checked).toBe(false);
+    expect(topFileCb.checked).toBe(false);
+    expect(childCb.checked).toBe(false);
+  });
+});
+
+describe("ObjectBrowser folder size dash click", () => {
+  it("clicking the dash in the Size column of a folder calculates and displays size", async () => {
+    const user = userEvent.setup();
+    listKeysUnderMock.mockResolvedValueOnce([
+      {
+        key: "photos/cover.jpg",
+        size: 1024,
+        last_modified: null,
+        etag: null,
+        storage_class: null,
+      },
+      {
+        key: "photos/2024/jan.jpg",
+        size: 2048,
+        last_modified: null,
+        etag: null,
+        storage_class: null,
+      },
+    ]);
+
+    render(<ObjectBrowser />);
+    await screen.findByText("photos");
+
+    const calcBtn = screen.getByLabelText("Calculate size of photos");
+    await user.click(calcBtn);
+
+    await waitFor(() =>
+      expect(listKeysUnderMock).toHaveBeenCalledWith(
+        "c1",
+        "my-bucket",
+        "photos/",
+      ),
+    );
+    await screen.findByText("3.0 KB");
   });
 });
 
@@ -646,8 +1043,8 @@ describe("ObjectBrowser header layout", () => {
     const user = userEvent.setup();
     render(<ObjectBrowser />);
 
-    const file = await screen.findByText("report.pdf");
-    await user.click(file);
+    await screen.findByText("report.pdf");
+    await user.click(screen.getByLabelText("Select report.pdf"));
 
     expect(await screen.findByTestId("selection-count")).toHaveTextContent(
       "1 selected",
@@ -660,9 +1057,9 @@ describe("ObjectBrowser delete flow", () => {
     const user = userEvent.setup();
     render(<ObjectBrowser />);
 
-    // Select the file row and open its context menu to trigger Delete.
+    // Select the file row via its checkbox and open its context menu to trigger Delete.
     const fileName = await screen.findByText("report.pdf");
-    await user.click(fileName);
+    await user.click(screen.getByLabelText("Select report.pdf"));
     await user.pointer({ keys: "[MouseRight>]", target: fileName });
 
     const deleteItem = await screen.findByText("Delete");

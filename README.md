@@ -78,7 +78,7 @@ Official signed and notarized builds are planned later.
 - Copy / Move destination picker with a folder tree, lazy-expanded children
   on click, and an inline "New Folder" action so you can carve out a fresh
   destination without leaving the dialog
-- Calculate folder size recursively across all nested subfolders from the folder context menu
+- Calculate folder size recursively across all nested subfolders — either from the folder context menu ("Folder Size") or by clicking the `—` in the Size column of any folder row
 
 ### Transfer Queue
 

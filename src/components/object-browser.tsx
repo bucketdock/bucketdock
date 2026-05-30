@@ -708,39 +708,102 @@ export default function ObjectBrowser() {
   }, [softRefresh]);
 
   // ── Selection helpers ──────────────────────────────────────────────────────
+  //
+  // Selection is driven exclusively by the checkboxes (and the header
+  // "select all" checkbox / Cmd+A). Clicking elsewhere on a row never
+  // toggles a checkbox — rows still respond to double-click (navigate /
+  // preview) and right-click (context menu).
 
-  const toggleSelect = (key: string, e: React.MouseEvent) => {
+  const handleCheckboxClick = (key: string, e: React.MouseEvent) => {
+    // Shift-click extends the selection from the last-clicked checkbox to
+    // the one just clicked (Finder-style range select).
     if (e.shiftKey && lastSelected) {
       const fromIdx = allKeys.indexOf(lastSelected);
       const toIdx = allKeys.indexOf(key);
       if (fromIdx !== -1 && toIdx !== -1) {
         const [lo, hi] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
-        setSelection((s) => new Set([...s, ...allKeys.slice(lo, hi + 1)]));
+        setSelection((s) => {
+          let next = new Set(s);
+          for (const rangeKey of allKeys.slice(lo, hi + 1)) {
+            next = addSelectionWithHierarchy(next, rangeKey);
+          }
+          return next;
+        });
+        setLastSelected(key);
         return;
       }
     }
-    if (e.metaKey || e.ctrlKey) {
-      setSelection((s) => {
-        const next = new Set(s);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-    } else {
-      setSelection(new Set([key]));
-    }
-    setLastSelected(key);
-  };
-
-  const toggleCheckbox = (key: string) => {
     setSelection((s) => {
-      const next = new Set(s);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
+      if (s.has(key)) {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      }
+      return addSelectionWithHierarchy(s, key);
     });
     setLastSelected(key);
   };
+
+  // Rows rendered from expanded children are folders too, but they are not
+  // part of the top-level `listing.folders` array. Treat trailing-slash keys
+  // as folders so subfolders get the same behavior as top-level folders.
+  const isFolderKey = React.useCallback((key: string) => key.endsWith("/"), []);
+
+  const isDescendantKey = React.useCallback(
+    (candidate: string, ancestor: string) =>
+      candidate !== ancestor && candidate.startsWith(ancestor),
+    [],
+  );
+
+  const addSelectionWithHierarchy = React.useCallback(
+    (base: Set<string>, key: string): Set<string> => {
+      const next = new Set(base);
+
+      // If a child is selected, its selected folder ancestors must clear.
+      for (const selected of [...next]) {
+        if (isFolderKey(selected) && isDescendantKey(key, selected)) {
+          next.delete(selected);
+        }
+      }
+
+      // If a folder is selected, its selected descendants must clear.
+      if (isFolderKey(key)) {
+        for (const selected of [...next]) {
+          if (isDescendantKey(selected, key)) {
+            next.delete(selected);
+          }
+        }
+      }
+
+      next.add(key);
+      return next;
+    },
+    [isDescendantKey, isFolderKey],
+  );
+
+  const openRowContextMenu = React.useCallback(
+    (
+      position: { x: number; y: number },
+      key: string,
+      isFolder: boolean,
+      opts?: { toggleIfSame?: boolean },
+    ) => {
+      // Row context menu acts on one row, so clear checkbox multi-selection.
+      setSelection(new Set());
+      setContextMenu((current) => {
+        if (
+          opts?.toggleIfSame &&
+          current &&
+          current.key === key &&
+          current.isFolder === isFolder
+        ) {
+          return null;
+        }
+        return { position, key, isFolder };
+      });
+    },
+    [],
+  );
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
 
@@ -754,10 +817,16 @@ export default function ObjectBrowser() {
         setModal({ type: "delete", keys: [...selection] });
     } else if (e.key === "Enter" && selection.size === 1) {
       const key = [...selection][0];
-      if (listing.folders.includes(key)) navigateInto(key.slice(prefix.length));
+      if (isFolderKey(key)) navigateInto(key.slice(prefix.length));
     } else if ((e.metaKey || e.ctrlKey) && e.key === "a") {
       e.preventDefault();
-      setSelection(new Set(allKeys));
+      setSelection((s) => {
+        let next = new Set(s);
+        for (const topLevelKey of allKeys) {
+          next = addSelectionWithHierarchy(next, topLevelKey);
+        }
+        return next;
+      });
     } else if ((e.metaKey || e.ctrlKey) && e.key === "[") {
       // macOS Finder: ⌘[ goes back in history.
       e.preventDefault();
@@ -769,10 +838,7 @@ export default function ObjectBrowser() {
     } else if ((e.metaKey || e.ctrlKey) && e.key === "i") {
       e.preventDefault();
       const selectedKeys = [...selection];
-      if (
-        selectedKeys.length === 1 &&
-        !listing.folders.includes(selectedKeys[0])
-      ) {
+      if (selectedKeys.length === 1 && !isFolderKey(selectedKeys[0])) {
         setInfoKey(selectedKeys[0]);
       }
     }
@@ -965,8 +1031,8 @@ export default function ObjectBrowser() {
 
   const handleDownloadMultiple = async (keys: string[]) => {
     if (!connId || !bucket) return;
-    const folderKeys = keys.filter((k) => listing.folders.includes(k));
-    const fileKeys = keys.filter((k) => !listing.folders.includes(k));
+    const folderKeys = keys.filter((k) => isFolderKey(k));
+    const fileKeys = keys.filter((k) => !isFolderKey(k));
     if (folderKeys.length === 0 && fileKeys.length === 0) {
       toast.error("No items in selection to download");
       return;
@@ -1020,8 +1086,8 @@ export default function ObjectBrowser() {
   const handleDeleteConfirm = async (keys: string[]) => {
     if (!connId || !bucket) return;
     setModal(null);
-    const folderKeys = keys.filter((k) => listing.folders.includes(k));
-    const fileKeys = keys.filter((k) => !listing.folders.includes(k));
+    const folderKeys = keys.filter((k) => isFolderKey(k));
+    const fileKeys = keys.filter((k) => !isFolderKey(k));
     if (folderKeys.length === 0 && fileKeys.length === 0) return;
 
     // Route deletes through the transfer queue so the user sees live
@@ -1120,25 +1186,23 @@ export default function ObjectBrowser() {
 
   const buildContextMenuItems = (info: ContextMenuInfo): ContextMenuItem[] => {
     const { key, isFolder } = info;
-    const applyToSelection = selection.has(key) && selection.size > 1;
-    const targets = applyToSelection ? [...selection] : [key];
 
     const items: ContextMenuItem[] = [];
 
-    if (!applyToSelection && isFolder) {
+    if (isFolder) {
       items.push({
         label: "Open",
         icon: <ExternalLink className="w-3.5 h-3.5" />,
         onClick: () => navigateInto(key.slice(prefix.length)),
       });
       items.push({
-        label: "Calculate Folder Size",
+        label: "Folder Size",
         icon: <Info className="w-3.5 h-3.5" />,
         onClick: () => calculateFolderSize(key),
       });
     }
 
-    if (!applyToSelection && !isFolder) {
+    if (!isFolder) {
       items.push({
         label: "Preview",
         icon: <Eye className="w-3.5 h-3.5" />,
@@ -1150,43 +1214,40 @@ export default function ObjectBrowser() {
       label: "Download",
       icon: <Download className="w-3.5 h-3.5" />,
       onClick: () => {
-        if (!applyToSelection && isFolder) handleDownloadFolder(key);
-        else if (!applyToSelection && !isFolder) handleDownloadSingle(key);
-        else handleDownloadMultiple(targets);
+        if (isFolder) handleDownloadFolder(key);
+        else handleDownloadSingle(key);
       },
     });
 
     // Copy works for files and folders (folders are expanded server-side
     // by the copy modal via list_keys_under).
     items.push({
-      label: applyToSelection ? `Copy ${targets.length} to…` : "Copy to…",
+      label: "Copy to…",
       icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
-      onClick: () => setModal({ type: "copyTo", keys: targets, mode: "copy" }),
+      onClick: () => setModal({ type: "copyTo", keys: [key], mode: "copy" }),
     });
 
     // Move = copy + delete-source on success. The CopyToModal handles the
     // distinction via its `mode` prop.
     items.push({
-      label: applyToSelection ? `Move ${targets.length} to…` : "Move to…",
+      label: "Move to…",
       icon: <MoveRight className="w-3.5 h-3.5" />,
-      onClick: () => setModal({ type: "copyTo", keys: targets, mode: "move" }),
+      onClick: () => setModal({ type: "copyTo", keys: [key], mode: "move" }),
     });
 
-    if (!applyToSelection) {
-      items.push({
-        label: "Rename",
-        icon: <Pencil className="w-3.5 h-3.5" />,
-        onClick: () => {
-          const currentName = isFolder
-            ? key.slice(prefix.length).replace(/\/$/, "")
-            : fileBasename(key);
-          setRenameValue(currentName);
-          setModal({ type: "rename", key, isFolder, currentName });
-        },
-      });
-    }
+    items.push({
+      label: "Rename",
+      icon: <Pencil className="w-3.5 h-3.5" />,
+      onClick: () => {
+        const currentName = isFolder
+          ? key.slice(prefix.length).replace(/\/$/, "")
+          : fileBasename(key);
+        setRenameValue(currentName);
+        setModal({ type: "rename", key, isFolder, currentName });
+      },
+    });
 
-    if (!applyToSelection && !isFolder) {
+    if (!isFolder) {
       items.push({
         label: "Get Info…",
         icon: <Info className="w-3.5 h-3.5" />,
@@ -1200,10 +1261,10 @@ export default function ObjectBrowser() {
     }
 
     items.push({
-      label: applyToSelection ? `Delete ${targets.length} items` : "Delete",
+      label: "Delete",
       icon: <Trash2 className="w-3.5 h-3.5" />,
       danger: true,
-      onClick: () => setModal({ type: "delete", keys: targets }),
+      onClick: () => setModal({ type: "delete", keys: [key] }),
     });
 
     return items;
@@ -1213,9 +1274,9 @@ export default function ObjectBrowser() {
 
   const handleHeaderDownload = () => {
     const keys = [...selection];
-    if (keys.length === 1 && listing.folders.includes(keys[0])) {
+    if (keys.length === 1 && isFolderKey(keys[0])) {
       handleDownloadFolder(keys[0]);
-    } else if (keys.length === 1 && !listing.folders.includes(keys[0])) {
+    } else if (keys.length === 1 && !isFolderKey(keys[0])) {
       handleDownloadSingle(keys[0]);
     } else {
       handleDownloadMultiple(keys);
@@ -1247,10 +1308,18 @@ export default function ObjectBrowser() {
       ? bucket
       : breadcrumbSegments[breadcrumbSegments.length - 1];
   const hasSelection = selection.size > 0;
-  const allChecked = allKeys.length > 0 && selection.size === allKeys.length;
-  const someChecked = selection.size > 0 && selection.size < allKeys.length;
+  const selectedFolderKeys = [...selection].filter((k) => isFolderKey(k));
+  const hasSelectedFolders = selectedFolderKeys.length > 0;
+  const topLevelSelectedCount = allKeys.reduce(
+    (count, key) => count + (selection.has(key) ? 1 : 0),
+    0,
+  );
+  const allChecked =
+    allKeys.length > 0 && topLevelSelectedCount === allKeys.length;
+  const someChecked =
+    topLevelSelectedCount > 0 && topLevelSelectedCount < allKeys.length;
   const singleSelectedIsFile =
-    selection.size === 1 && !listing.folders.includes([...selection][0]);
+    selection.size === 1 && !isFolderKey([...selection][0]);
   const canBack = back.length > 0;
   const canForward = forward.length > 0;
 
@@ -1275,15 +1344,10 @@ export default function ObjectBrowser() {
     return (
       <React.Fragment key={folder}>
         <tr
-          onClick={(e) => toggleSelect(folder, e)}
           onDoubleClick={() => navigateInto(folder.slice(prefix.length))}
           onContextMenu={(e) => {
             e.preventDefault();
-            setContextMenu({
-              position: { x: e.clientX, y: e.clientY },
-              key: folder,
-              isFolder: true,
-            });
+            openRowContextMenu({ x: e.clientX, y: e.clientY }, folder, true);
           }}
           className={cn(
             // Slightly lighter than the page background so rows pop in dark
@@ -1297,16 +1361,20 @@ export default function ObjectBrowser() {
           <td
             className="py-1 text-center"
             style={{ width: CHECKBOX_COL_WIDTH }}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleCheckbox(folder);
-            }}
+            onDoubleClick={(e) => e.stopPropagation()}
           >
             <input
               type="checkbox"
-              className="checkbox-mac pointer-events-none"
+              className="checkbox-mac"
               checked={isSelected}
-              readOnly
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCheckboxClick(folder, e);
+              }}
+              onChange={() => {
+                /* handled by onClick so we can read modifier keys */
+              }}
+              aria-label={`Select ${displayName}`}
             />
           </td>
           <td className="px-3 py-1">
@@ -1350,16 +1418,38 @@ export default function ObjectBrowser() {
             Folder
           </td>
           <td className="px-3 py-1 text-neutral-400 whitespace-nowrap">—</td>
-          <td className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums whitespace-nowrap">
+          <td
+            className="px-3 py-1 text-right text-neutral-400 dark:text-neutral-500 tabular-nums whitespace-nowrap"
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
             {(() => {
               const fs = folderSizes[folder];
-              if (!fs) return "—";
-              if (fs.state === "loading")
+              if (fs?.state === "loading") {
                 return (
                   <Loader2 className="w-3.5 h-3.5 animate-spin inline-block" />
                 );
-              if (fs.state === "error") return "—";
-              return formatSize(fs.bytes);
+              }
+              if (fs?.state === "done") return formatSize(fs.bytes);
+              // Idle or error — clicking the dash kicks off (or retries)
+              // recursive size calculation in place.
+              return (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    calculateFolderSize(folder);
+                  }}
+                  className="px-1 -mx-1 rounded hover:bg-black/8 dark:hover:bg-white/8 hover:text-neutral-700 dark:hover:text-neutral-200"
+                  title={
+                    fs?.state === "error"
+                      ? "Retry — calculate folder size"
+                      : "Calculate folder size"
+                  }
+                  aria-label={`Calculate size of ${displayName}`}
+                >
+                  —
+                </button>
+              );
             })()}
           </td>
           <td className="px-3 py-1 text-right text-neutral-400 whitespace-nowrap">
@@ -1376,10 +1466,8 @@ export default function ObjectBrowser() {
                 const r = (
                   e.currentTarget as HTMLElement
                 ).getBoundingClientRect();
-                setContextMenu({
-                  position: { x: r.right, y: r.bottom },
-                  key: folder,
-                  isFolder: true,
+                openRowContextMenu({ x: r.right, y: r.bottom }, folder, true, {
+                  toggleIfSame: true,
                 });
               }}
               className="p-1 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-500"
@@ -1411,15 +1499,10 @@ export default function ObjectBrowser() {
     return (
       <tr
         key={file.key}
-        onClick={(e) => toggleSelect(file.key, e)}
         onDoubleClick={() => setPreviewKey(file.key)}
         onContextMenu={(e) => {
           e.preventDefault();
-          setContextMenu({
-            position: { x: e.clientX, y: e.clientY },
-            key: file.key,
-            isFolder: false,
-          });
+          openRowContextMenu({ x: e.clientX, y: e.clientY }, file.key, false);
         }}
         className={cn(
           "border-b border-black/4 dark:border-white/6 dark:bg-white/3 cursor-pointer select-none",
@@ -1430,16 +1513,20 @@ export default function ObjectBrowser() {
         <td
           className="py-1 text-center"
           style={{ width: CHECKBOX_COL_WIDTH }}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleCheckbox(file.key);
-          }}
+          onDoubleClick={(e) => e.stopPropagation()}
         >
           <input
             type="checkbox"
-            className="checkbox-mac pointer-events-none"
+            className="checkbox-mac"
             checked={isSelected}
-            readOnly
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCheckboxClick(file.key, e);
+            }}
+            onChange={() => {
+              /* handled by onClick so we can read modifier keys */
+            }}
+            aria-label={`Select ${displayName}`}
           />
         </td>
         <td className="px-3 py-1">
@@ -1483,10 +1570,8 @@ export default function ObjectBrowser() {
               const r = (
                 e.currentTarget as HTMLElement
               ).getBoundingClientRect();
-              setContextMenu({
-                position: { x: r.right, y: r.bottom },
-                key: file.key,
-                isFolder: false,
+              openRowContextMenu({ x: r.right, y: r.bottom }, file.key, false, {
+                toggleIfSame: true,
               });
             }}
             className="p-1 rounded hover:bg-black/8 dark:hover:bg-white/8 text-neutral-500"
@@ -1571,26 +1656,49 @@ export default function ObjectBrowser() {
       },
     });
   }
-  if (hasSelection) {
-    toolbarItems.push({
-      key: "download",
-      priority: 50,
-      render: () => (
+  toolbarItems.push({
+    key: "download",
+    priority: 50,
+    render: () =>
+      hasSelection ? (
         <Button variant="ghost" size="sm" onClick={handleHeaderDownload}>
           <Download className="w-3.5 h-3.5" />
           Download
         </Button>
-      ),
-      menu: {
-        label: "Download",
-        icon: <Download className="w-3.5 h-3.5" />,
-        onClick: handleHeaderDownload,
+      ) : null,
+    menu: {
+      label: "Download",
+      icon: <Download className="w-3.5 h-3.5" />,
+      alwaysVisible: true,
+      disabled: !hasSelection,
+      onClick: handleHeaderDownload,
+    },
+  });
+  toolbarItems.push({
+    key: "folder-size",
+    priority: 65,
+    render: () => null,
+    menu: {
+      label: hasSelectedFolders
+        ? selectedFolderKeys.length === 1
+          ? "Folder size"
+          : `Folder size (${selectedFolderKeys.length})`
+        : "Folder size",
+      icon: <Info className="w-3.5 h-3.5" />,
+      alwaysVisible: true,
+      disabled: !hasSelectedFolders,
+      onClick: () => {
+        for (const folderKey of selectedFolderKeys) {
+          void calculateFolderSize(folderKey);
+        }
       },
-    });
-    toolbarItems.push({
-      key: "copy",
-      priority: 40,
-      render: () => (
+    },
+  });
+  toolbarItems.push({
+    key: "copy",
+    priority: 40,
+    render: () =>
+      hasSelection ? (
         <Button
           variant="ghost"
           size="sm"
@@ -1602,18 +1710,21 @@ export default function ObjectBrowser() {
           <ArrowRightLeft className="w-3.5 h-3.5" />
           Copy to…
         </Button>
-      ),
-      menu: {
-        label: "Copy to…",
-        icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
-        onClick: () =>
-          setModal({ type: "copyTo", keys: [...selection], mode: "copy" }),
-      },
-    });
-    toolbarItems.push({
-      key: "move",
-      priority: 35,
-      render: () => (
+      ) : null,
+    menu: {
+      label: "Copy to…",
+      icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
+      alwaysVisible: true,
+      disabled: !hasSelection,
+      onClick: () =>
+        setModal({ type: "copyTo", keys: [...selection], mode: "copy" }),
+    },
+  });
+  toolbarItems.push({
+    key: "move",
+    priority: 35,
+    render: () =>
+      hasSelection ? (
         <Button
           variant="ghost"
           size="sm"
@@ -1625,15 +1736,16 @@ export default function ObjectBrowser() {
           <MoveRight className="w-3.5 h-3.5" />
           Move to…
         </Button>
-      ),
-      menu: {
-        label: "Move to…",
-        icon: <MoveRight className="w-3.5 h-3.5" />,
-        onClick: () =>
-          setModal({ type: "copyTo", keys: [...selection], mode: "move" }),
-      },
-    });
-  }
+      ) : null,
+    menu: {
+      label: "Move to…",
+      icon: <MoveRight className="w-3.5 h-3.5" />,
+      alwaysVisible: true,
+      disabled: !hasSelection,
+      onClick: () =>
+        setModal({ type: "copyTo", keys: [...selection], mode: "move" }),
+    },
+  });
   if (hasSelection && selection.size === 1 && singleSelectedIsFile) {
     toolbarItems.push({
       key: "info",
@@ -1700,6 +1812,23 @@ export default function ObjectBrowser() {
         setNewFolderValue("");
         setModal({ type: "newFolder" });
       },
+    },
+  });
+  toolbarItems.push({
+    key: "delete-items",
+    priority: 70,
+    render: () => null,
+    menu: {
+      label: hasSelection
+        ? selection.size === 1
+          ? "Delete item"
+          : `Delete items (${selection.size})`
+        : "Delete items",
+      icon: <Trash2 className="w-3.5 h-3.5" />,
+      alwaysVisible: true,
+      danger: true,
+      disabled: !hasSelection,
+      onClick: () => setModal({ type: "delete", keys: [...selection] }),
     },
   });
 
@@ -1774,7 +1903,7 @@ export default function ObjectBrowser() {
         <div className="flex-1 min-w-0 flex items-center gap-2 flex-nowrap overflow-visible justify-end">
           {hasSelection && (
             <span
-              className="text-[11px] text-neutral-500 dark:text-neutral-400 select-none shrink-0"
+              className="text-[11px] text-neutral-500 dark:text-neutral-400 select-none shrink-0 mr-4"
               data-testid="selection-count"
             >
               {selection.size} selected
@@ -1931,9 +2060,21 @@ export default function ObjectBrowser() {
                       if (el) el.indeterminate = someChecked;
                     }}
                     onChange={(e) => {
-                      setSelection(
-                        e.target.checked ? new Set(allKeys) : new Set(),
-                      );
+                      setSelection((s) => {
+                        if (!e.target.checked) {
+                          const next = new Set(s);
+                          for (const topLevelKey of allKeys) {
+                            next.delete(topLevelKey);
+                          }
+                          return next;
+                        }
+
+                        let next = new Set(s);
+                        for (const topLevelKey of allKeys) {
+                          next = addSelectionWithHierarchy(next, topLevelKey);
+                        }
+                        return next;
+                      });
                     }}
                     aria-label="Select all"
                   />
@@ -2100,7 +2241,7 @@ export default function ObjectBrowser() {
         >
           <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
             This action cannot be undone.
-            {modal.keys.some((k) => listing.folders.includes(k)) && (
+            {modal.keys.some((k) => isFolderKey(k)) && (
               <>
                 {" "}
                 All objects inside selected folders will also be permanently
@@ -2110,7 +2251,7 @@ export default function ObjectBrowser() {
           </p>
           <ul className="mb-4 max-h-48 overflow-y-auto rounded-md border border-black/8 dark:border-white/8 bg-black/3 dark:bg-white/4 text-xs">
             {modal.keys.slice(0, 100).map((k) => {
-              const isFolder = listing.folders.includes(k);
+              const isFolder = isFolderKey(k);
               const display = isFolder
                 ? k.slice(prefix.length).replace(/\/$/, "") + "/"
                 : k.slice(prefix.length);

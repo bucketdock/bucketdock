@@ -151,4 +151,30 @@ describe("OverflowToolbar", () => {
     await user.click(within(menu).getByRole("menuitem", { name: "Item C" }));
     expect(onClickC).toHaveBeenCalledTimes(1);
   });
+
+  it("shows alwaysVisible menu items in the overflow menu even when inline space is sufficient", async () => {
+    containerWidth = 1000;
+    const user = userEvent.setup();
+    const items = makeItems();
+    items.push({
+      key: "menu-only-delete",
+      render: () => null,
+      menu: {
+        label: "Delete items",
+        onClick: vi.fn(),
+        alwaysVisible: true,
+      },
+    });
+
+    render(<OverflowToolbar items={items} />);
+    await act(async () => {});
+
+    const row = visibleRow();
+    const trigger = within(row).getByTestId("overflow-menu-trigger");
+    await user.click(trigger);
+    const menu = await screen.findByTestId("overflow-menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "Delete items" }),
+    ).toBeInTheDocument();
+  });
 });

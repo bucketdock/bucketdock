@@ -26,6 +26,12 @@ export interface OverflowItem {
     icon?: React.ReactNode;
     disabled?: boolean;
     danger?: boolean;
+    /**
+     * Keep this action in the overflow menu even when there is enough
+     * inline space. Useful for "secondary" actions that should live in
+     * the three-dots menu by design.
+     */
+    alwaysVisible?: boolean;
   };
   /**
    * Drop priority — items with the *lowest* priority are pushed into the
@@ -74,10 +80,16 @@ export function OverflowToolbar({
   // Items that would never appear in the overflow menu (no `menu` provided)
   // are pinned to the right of the toolbar and always rendered.
   const overflowable = React.useMemo(
-    () => items.filter((it) => it.menu),
+    () => items.filter((it) => it.menu && !it.menu.alwaysVisible),
     [items],
   );
   const pinned = React.useMemo(() => items.filter((it) => !it.menu), [items]);
+
+  const overflowableIndexByKey = React.useMemo(() => {
+    const map = new Map<string, number>();
+    overflowable.forEach((it, idx) => map.set(it.key, idx));
+    return map;
+  }, [overflowable]);
 
   // Order in which overflowable items are *dropped*: lowest priority first,
   // ties broken by right-to-left visual order so the right edge collapses
@@ -181,7 +193,12 @@ export function OverflowToolbar({
     return set;
   }, [hiddenIdxs, overflowable.length]);
 
-  const hiddenItems = overflowable.filter((_, i) => !visibleSet.has(i));
+  const hiddenItems = items.filter((it) => {
+    if (!it.menu) return false;
+    if (it.menu.alwaysVisible) return true;
+    const idx = overflowableIndexByKey.get(it.key);
+    return idx !== undefined && !visibleSet.has(idx);
+  });
 
   return (
     <div
