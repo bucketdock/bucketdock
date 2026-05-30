@@ -230,6 +230,26 @@ describe("ObjectBrowser top toolbar", () => {
       "photos",
     );
   });
+
+  it("filter matches loaded subfolder rows and nested files", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+
+    await user.click(await screen.findByTestId("disclosure-photos/"));
+    await screen.findByText("2024");
+    await screen.findByText("cover.jpg");
+
+    const filter = screen.getByLabelText("Filter");
+    await user.type(filter, "2024");
+    expect(screen.getByText("photos")).toBeInTheDocument();
+    expect(screen.getByText("2024")).toBeInTheDocument();
+    expect(screen.queryByText("report.pdf")).not.toBeInTheDocument();
+
+    await user.clear(filter);
+    await user.type(filter, "cover.jpg");
+    expect(screen.getByText("photos")).toBeInTheDocument();
+    expect(screen.getByText("cover.jpg")).toBeInTheDocument();
+  });
 });
 
 describe("ObjectBrowser bottom path bar", () => {

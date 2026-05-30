@@ -265,4 +265,22 @@ describe("CopyToModal destination filter", () => {
 
     expect(screen.getByText(/No folders match/i)).toBeInTheDocument();
   });
+
+  it("keeps a parent row visible when a loaded descendant subfolder matches", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await screen.findByTestId("copy-tree-row-photos/");
+    await user.click(screen.getByTestId("copy-tree-disclosure-photos/"));
+    await screen.findByTestId("copy-tree-row-photos/2024/");
+
+    const filter = screen.getByTestId("copy-tree-filter");
+    await user.type(filter, "2024");
+
+    expect(screen.getByTestId("copy-tree-row-photos/")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("copy-tree-row-photos/2024/"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("copy-tree-row-docs/")).not.toBeInTheDocument();
+  });
 });

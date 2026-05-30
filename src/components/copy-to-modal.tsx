@@ -570,15 +570,21 @@ export default function CopyToModal({
         );
       } else if (node.children) {
         // Filter child folders by the destination-tree search query. We
-        // match on the leaf name only — the user is picking a folder, so
-        // matching against the full key would be noisy. An empty query
-        // matches everything (the test below short-circuits).
+        // match on loaded descendants too (without fetching more nodes), so
+        // typing a deep subfolder name still keeps its parent path visible.
         const q = treeFilter.trim().toLowerCase();
+        const nodeHasMatch = (folderPrefix: string): boolean => {
+          const name =
+            folderPrefix.replace(/\/$/, "").split("/").pop()?.toLowerCase() ??
+            "";
+          if (!q || name.includes(q)) return true;
+          const n = tree[folderPrefix];
+          if (!n || n.loading || n.error || !n.children) return false;
+          return n.children.some((childPrefix) => nodeHasMatch(childPrefix));
+        };
         const matchedChildren = node.children.filter((child) => {
           if (!q) return true;
-          const name =
-            child.replace(/\/$/, "").split("/").pop()?.toLowerCase() ?? "";
-          return name.includes(q);
+          return nodeHasMatch(child);
         });
         if (matchedChildren.length === 0 && q) {
           rows.push(
@@ -710,23 +716,22 @@ export default function CopyToModal({
             choose it as the destination. The selected row gets the macOS
             accent tint and a check on the right. */}
         <div className="rounded-md border border-black/10 dark:border-white/10 bg-white/60 dark:bg-neutral-900/60 overflow-hidden">
-          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-black/8 dark:border-white/8 gap-2">
+          <div className="grid grid-cols-[auto_1fr_auto] items-center px-2.5 py-1.5 border-b border-black/8 dark:border-white/8 gap-2">
             <span className="text-[11px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 shrink-0">
               Destination
             </span>
-            {/* Filter input — narrows the visible children at each loaded
-                level by name. Kept compact so the New Folder button still
-                fits next to it on small modal widths. */}
-            <div className="relative flex-1 min-w-0 max-w-45">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-400 pointer-events-none" />
-              <Input
-                value={treeFilter}
-                onChange={(e) => setTreeFilter(e.target.value)}
-                placeholder="Filter folders…"
-                className="pl-6 h-6 text-xs"
-                aria-label="Filter destination folders"
-                data-testid="copy-tree-filter"
-              />
+            <div className="min-w-0 flex justify-center">
+              <div className="relative w-40 max-w-[45vw] shrink-0">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+                <Input
+                  value={treeFilter}
+                  onChange={(e) => setTreeFilter(e.target.value)}
+                  placeholder="Filter…"
+                  className="pl-8 h-8 text-[13px]"
+                  aria-label="Filter destination folders"
+                  data-testid="copy-tree-filter"
+                />
+              </div>
             </div>
             <Button
               type="button"
@@ -767,7 +772,7 @@ export default function CopyToModal({
             </Button>
           </div>
           <ul
-            className="max-h-64 overflow-auto py-1 pane-scroll"
+            className="h-56 min-h-40 max-h-[55vh] resize-y overflow-auto py-1 pane-scroll"
             aria-label="Destination folder tree"
           >
             {renderNode("", 0)}

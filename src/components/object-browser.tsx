@@ -606,8 +606,28 @@ export default function ObjectBrowser() {
 
   const { visibleFolders, visibleFiles, allKeys } = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    const matchFolder = (f: string) =>
-      !q || f.slice(prefix.length).toLowerCase().includes(q);
+    const childListingHasMatch = (child: ChildListing): boolean => {
+      if (!q || child.loading || !!child.error) return false;
+
+      const folderHit = child.folders.some((folderKey) => {
+        const name = folderDisplayName(folderKey, prefix).toLowerCase();
+        if (name.includes(q)) return true;
+        const nested = expanded[folderKey];
+        return nested ? childListingHasMatch(nested) : false;
+      });
+      if (folderHit) return true;
+
+      return child.files.some((f) =>
+        f.key.slice(prefix.length).toLowerCase().includes(q),
+      );
+    };
+
+    const matchFolder = (f: string) => {
+      if (!q) return true;
+      if (f.slice(prefix.length).toLowerCase().includes(q)) return true;
+      const child = expanded[f];
+      return child ? childListingHasMatch(child) : false;
+    };
     const matchFile = (f: ObjectInfo) =>
       !q || f.key.slice(prefix.length).toLowerCase().includes(q);
 
@@ -650,7 +670,7 @@ export default function ObjectBrowser() {
       visibleFiles: files,
       allKeys: [...folders, ...files.map((f) => f.key)],
     };
-  }, [listing, prefix, search, sortKey, sortDir]);
+  }, [expanded, listing, prefix, search, sortKey, sortDir]);
 
   // ── Drag & drop ────────────────────────────────────────────────────────────
 
@@ -1596,6 +1616,27 @@ export default function ObjectBrowser() {
     listing: ChildListing,
     depth: number,
   ): React.ReactNode => {
+    const q = search.trim().toLowerCase();
+
+    const listingHasMatch = (child: ChildListing): boolean => {
+      if (!q || child.loading || !!child.error) return false;
+
+      const folderHit = child.folders.some((folderKey) => {
+        const name = folderKey
+          .slice(prefix.length)
+          .replace(/\/$/, "")
+          .toLowerCase();
+        if (name.includes(q)) return true;
+        const nested = expanded[folderKey];
+        return nested ? listingHasMatch(nested) : false;
+      });
+      if (folderHit) return true;
+
+      return child.files.some((f) =>
+        f.key.slice(prefix.length).toLowerCase().includes(q),
+      );
+    };
+
     if (listing.loading) {
       return null;
     }
@@ -1619,10 +1660,37 @@ export default function ObjectBrowser() {
         </tr>
       );
     }
+
+    const filteredFolders = listing.folders.filter((folderKey) => {
+      if (!q) return true;
+      const name = folderKey
+        .slice(prefix.length)
+        .replace(/\/$/, "")
+        .toLowerCase();
+      if (name.includes(q)) return true;
+      const nested = expanded[folderKey];
+      return nested ? listingHasMatch(nested) : false;
+    });
+
+    const filteredFiles = listing.files.filter(
+      (f) => !q || f.key.slice(prefix.length).toLowerCase().includes(q),
+    );
+
+    if (filteredFolders.length === 0 && filteredFiles.length === 0 && q) {
+      return (
+        <tr key={`${parentFolder}-nomatch`}>
+          <td className="px-3 py-1" />
+          <td className="px-3 py-1 text-xs text-neutral-400 italic" colSpan={6}>
+            <div style={indentPx(depth)}>No matches</div>
+          </td>
+        </tr>
+      );
+    }
+
     return (
       <>
-        {listing.folders.map((f) => renderFolderRow(f, parentFolder, depth))}
-        {listing.files.map((f) => renderFileRow(f, parentFolder, depth))}
+        {filteredFolders.map((f) => renderFolderRow(f, parentFolder, depth))}
+        {filteredFiles.map((f) => renderFileRow(f, parentFolder, depth))}
       </>
     );
   };
