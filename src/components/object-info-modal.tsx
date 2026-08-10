@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Trash2 } from "lucide-react";
+import { Check, Copy, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -14,6 +14,8 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { useAppStore } from "@/store/app-store";
+import { buildPublicObjectUrl } from "@/lib/object-url";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,6 +70,11 @@ export function ObjectInfoModal({
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [metadata, setMetadata] = React.useState<ObjectMetadata | null>(null);
+  const [urlCopied, setUrlCopied] = React.useState(false);
+  const connection = useAppStore((state) =>
+    state.connections.find((item) => item.id === connectionId),
+  );
+  const publicUrl = buildPublicObjectUrl(connection, bucket, objectKey);
 
   // Header fields
   const [contentType, setContentType] = React.useState("");
@@ -87,6 +94,7 @@ export function ObjectInfoModal({
     if (!open || !objectKey) return;
     setLoading(true);
     setMetadata(null);
+    setUrlCopied(false);
     setMetaRows([]);
     getObjectMetadata(connectionId, bucket, objectKey)
       .then((m) => {
@@ -247,6 +255,51 @@ export function ObjectInfoModal({
                   ))}
                 </dl>
               </section>
+
+              {/* ── Public URL ── */}
+              {publicUrl && (
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">
+                    Public URL
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={publicUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="min-w-0 flex-1 truncate font-mono text-xs text-[#007AFF] hover:underline"
+                      title={publicUrl}
+                    >
+                      {publicUrl}
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Copy public URL"
+                      aria-label="Copy public URL"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(publicUrl);
+                          setUrlCopied(true);
+                          toast.success("Public URL copied");
+                          window.setTimeout(() => setUrlCopied(false), 1500);
+                        } catch (err) {
+                          toast.error(`Failed to copy URL: ${err}`);
+                        }
+                      }}
+                    >
+                      {urlCopied ? (
+                        <Check className="w-3.5 h-3.5 text-green-500" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    The object must be publicly readable for this URL to work.
+                  </p>
+                </section>
+              )}
 
               {/* ── Read-only user metadata ── */}
               <section>
