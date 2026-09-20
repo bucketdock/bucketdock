@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.13](https://github.com/bucketdock/bucketdock/compare/v0.1.12...v0.1.13) (2026-05-30)
+
+
+### Features
+
+* add more tests ([27908f0](https://github.com/bucketdock/bucketdock/commit/27908f075b6b7e759bc8e0cc896d4f20c8950667))
+* improve filter apply also for subelements ([d4ee928](https://github.com/bucketdock/bucketdock/commit/d4ee928f0fee93f299f70de1e245f0e0841d56e1))
+* improve items selection, add calculation folder size and deletion in header menu ([537d507](https://github.com/bucketdock/bucketdock/commit/537d507b7731c47eeb690fc8c0e4088ac2134984))
+
+
+### Bug Fixes
+
+* fix column width setting ([77dbaff](https://github.com/bucketdock/bucketdock/commit/77dbaff6cbcbbebcbabc13594a61e3eafe3e7cac))
+
 ## [0.1.12](https://github.com/bucketdock/bucketdock/compare/v0.1.11...v0.1.12) (2026-05-28)
 
 
