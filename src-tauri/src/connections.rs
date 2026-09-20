@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
 
@@ -74,7 +74,10 @@ fn write_bundle(map: &std::collections::HashMap<String, String>) -> Result<()> {
 }
 
 pub fn load_metadata() -> Result<Vec<Connection>> {
-    let path = metadata_path();
+    load_metadata_from(&metadata_path())
+}
+
+fn load_metadata_from(path: &Path) -> Result<Vec<Connection>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -84,7 +87,10 @@ pub fn load_metadata() -> Result<Vec<Connection>> {
 }
 
 pub fn save_metadata(list: &[Connection]) -> Result<()> {
-    let path = metadata_path();
+    save_metadata_to(&metadata_path(), list)
+}
+
+fn save_metadata_to(path: &Path, list: &[Connection]) -> Result<()> {
     let tmp = path.with_extension("json.tmp");
     let content = serde_json::to_string_pretty(list)?;
     std::fs::write(&tmp, &content)?;
@@ -322,8 +328,9 @@ mod tests {
 
     #[test]
     fn save_load_metadata_roundtrip() {
-        // Use the real data_dir but a unique connection ID so we don't
-        // disturb the user's actual config.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("connections.json");
+        assert!(load_metadata_from(&path).unwrap().is_empty());
         let unique = format!("test-{}", uuid::Uuid::new_v4());
         let conn = Connection {
             id: unique.clone(),
@@ -336,11 +343,9 @@ mod tests {
             bucket_filter: Some("a,b".into()),
         };
 
-        let mut current = load_metadata().unwrap_or_default();
-        current.push(conn.clone());
-        save_metadata(&current).unwrap();
+        save_metadata_to(&path, &[conn]).unwrap();
 
-        let reloaded = load_metadata().unwrap();
+        let reloaded = load_metadata_from(&path).unwrap();
         let found = reloaded
             .iter()
             .find(|c| c.id == unique)
@@ -350,8 +355,8 @@ mod tests {
         // secret is `#[serde(skip)]` and must never round-trip.
         assert_eq!(found.secret_access_key, "");
 
-        // Cleanup so subsequent runs stay deterministic.
-        let cleaned: Vec<Connection> = reloaded.into_iter().filter(|c| c.id != unique).collect();
-        save_metadata(&cleaned).unwrap();
+        // Exercise replacement as well as the initial write.
+        save_metadata_to(&path, &[]).unwrap();
+        assert!(load_metadata_from(&path).unwrap().is_empty());
     }
 }

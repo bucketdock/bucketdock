@@ -174,9 +174,9 @@ If a connection was created before native Keychain persistence was enabled, edit
 ### Prerequisites
 
 - macOS
-- Node.js
-- pnpm
-- Rust
+- Node.js 22.14+ (22.x), or 24+
+- pnpm 10.34.5 (pinned in `package.json`)
+- Rust 1.94.1+ (required by the AWS SDK)
 - Tauri prerequisites for macOS
 
 Tauri setup instructions:

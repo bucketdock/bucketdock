@@ -22,22 +22,20 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: ESLint
-        # Runs eslint directly because `next lint` was removed in Next.js 16.
-        # Continue on error: existing repo has unrelated react-hooks warnings.
-        run: pnpm exec eslint . || true
+        # Existing lint errors are tracked separately from dependency upgrades.
+        continue-on-error: true
+        run: pnpm lint
 
       - name: Vitest (frontend unit tests)
         # Critical-path tests for the Tauri IPC bridge, mime helpers, app
@@ -63,9 +61,9 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: cargo check
-        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets
 
       - name: cargo test
         # Backend unit tests (connections + S3 helpers + key validation).
         # These are required to pass before any release workflow runs.
-        run: cargo test --manifest-path src-tauri/Cargo.toml --no-fail-fast
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-fail-fast
