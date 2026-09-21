@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.14](https://github.com/bucketdock/bucketdock/compare/v0.1.13...v0.1.14) (2026-09-21)
+
+
+### Bug Fixes
+
+* [#15](https://github.com/bucketdock/bucketdock/issues/15) trailing slash stripped ([366d459](https://github.com/bucketdock/bucketdock/commit/366d45988d32c88e9ea04399326036de64739c10))
+* [#15](https://github.com/bucketdock/bucketdock/issues/15) trailing slash stripped ([366d459](https://github.com/bucketdock/bucketdock/commit/366d45988d32c88e9ea04399326036de64739c10))
+* [#15](https://github.com/bucketdock/bucketdock/issues/15) trailing slash stripped ([8b336bb](https://github.com/bucketdock/bucketdock/commit/8b336bba9690940da041d70fb31dd2142e385e32))
+
 ## [0.1.13](https://github.com/bucketdock/bucketdock/compare/v0.1.12...v0.1.13) (2026-05-30)
 
 
