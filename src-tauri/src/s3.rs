@@ -182,7 +182,8 @@ impl S3Client {
             .credentials_provider(creds);
 
         if let Some(ep) = &conn.endpoint {
-            loader = loader.endpoint_url(ep.trim_end_matches('/').to_string());
+            // Keep the slash separating the endpoint path from the bucket name.
+            loader = loader.endpoint_url(ep);
         }
 
         let sdk_config = loader.load().await;
@@ -976,6 +977,47 @@ impl S3Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn list_objects_preserves_endpoint_path_separator() {
+        for (endpoint, expected_path) in [
+            ("https://example.com/dam/s3/", "/dam/s3/Default/"),
+            ("https://example.com/", "/Default/"),
+            ("https://example.com", "/Default/"),
+        ] {
+            let s3 = S3Client::from_connection(&ConnectionLike {
+                provider: "custom".into(),
+                endpoint: Some(endpoint.into()),
+                region: "us-east-1".into(),
+                access_key_id: "test-access-key".into(),
+                secret_access_key: "test-secret-key".into(),
+            })
+            .await
+            .unwrap();
+            let captured_uri = std::sync::Arc::new(std::sync::Mutex::new(None));
+            let request_uri = captured_uri.clone();
+
+            // Capture the URL without sending the request.
+            let result = s3
+                .client
+                .list_objects_v2()
+                .bucket("Default")
+                .prefix("")
+                .delimiter("/")
+                .customize()
+                .map_request(move |request| {
+                    *request_uri.lock().unwrap() = Some(request.uri().to_string());
+                    Err(std::io::Error::other("request captured"))
+                })
+                .send()
+                .await;
+
+            assert!(result.is_err());
+            let uri = captured_uri.lock().unwrap().clone().unwrap();
+            let url = url::Url::parse(&uri).unwrap();
+            assert_eq!(url.path(), expected_path, "endpoint: {endpoint}");
+        }
+    }
 
     #[derive(Debug, thiserror::Error)]
     #[error("inner-cause")]
