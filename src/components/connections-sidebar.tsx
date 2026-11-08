@@ -28,6 +28,7 @@ import {
   type Connection,
 } from "@/lib/tauri";
 import { cn } from "@/lib/cn";
+import { useHydrated } from "@/lib/use-hydrated";
 import ConnectionFormModal from "./connection-form-modal";
 import DeleteConnectionConfirm from "./delete-connection-confirm";
 
@@ -54,8 +55,7 @@ export default function ConnectionsSidebar() {
   // Track in-flight bucket fetches via ref to avoid effect re-entry
   const fetchingRef = React.useRef<Set<string>>(new Set());
   const [loadingIds, setLoadingIds] = React.useState<Set<string>>(new Set());
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
 
   // Listen for the native macOS menu's "New Connection" action.
   React.useEffect(() => {

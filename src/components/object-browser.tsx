@@ -309,7 +309,6 @@ export default function ObjectBrowser() {
   const [search, setSearch] = React.useState("");
   const [sortKey, setSortKey] = React.useState<SortKey>("name");
   const [sortDir, setSortDir] = React.useState<SortDir>("asc");
-  const [rowMenu, setRowMenu] = React.useState<ContextMenuInfo | null>(null);
   // key -> Content-Type returned by HEAD. `null` means we asked but the
   // object had no stored type. `undefined` (absent) means we haven't asked
   // yet, so the table can show the S3 default placeholder until the value
@@ -398,12 +397,18 @@ export default function ObjectBrowser() {
   const [expanded, setExpanded] = React.useState<Record<string, ChildListing>>(
     {},
   );
-  React.useEffect(() => {
-    // Collapse everything on listing context change. Without this, switching
-    // buckets while folders were expanded would briefly render orphan rows.
+  const listingContext = JSON.stringify([connId, bucket, prefix]);
+  const [previousContext, setPreviousContext] = React.useState<string | null>(null);
+  if (previousContext !== listingContext) {
+    // Reset before rendering children so rows from the previous location
+    // cannot briefly appear under the new bucket or prefix.
+    setPreviousContext(listingContext);
     setExpanded({});
     setFolderSizes({});
-  }, [connId, bucket, prefix]);
+    setListing({ folders: [], files: [], loading: !!connId && !!bucket, error: null });
+    setSelection(new Set());
+    setContentTypes({});
+  }
 
   const toggleExpand = React.useCallback(
     async (folderKey: string) => {
@@ -476,39 +481,22 @@ export default function ObjectBrowser() {
 
   // ── Listing ────────────────────────────────────────────────────────────────
 
-  // Monotonically-increasing token used to discard out-of-date listing
+  // Unique request token used to discard out-of-date listing
   // responses. When the user switches connection / bucket / prefix or hits
-  // refresh, we bump this; any in-flight `listObjects` whose response lands
+  // refresh, we replace this; any in-flight `listObjects` whose response lands
   // *after* a newer fetch has started is ignored. Without this guard a slow
   // failed listing for connection A can clobber a successful listing for
   // connection B that the user just switched to — which manifested as the
   // browser appearing to "remember" the broken connection until you clicked
   // away and back.
-  const fetchTokenRef = React.useRef(0);
+  const fetchTokenRef = React.useRef<symbol | null>(null);
 
-  const fetchListing = React.useCallback(
-    async (options?: { background?: boolean }) => {
+  const loadListing = React.useCallback(
+    () => {
       if (!connId || !bucket) return;
-      const token = ++fetchTokenRef.current;
-      const background = options?.background === true;
-      // ── Soft refresh ────────────────────────────────────────────────────
-      // A background refresh keeps the current rows on screen while the
-      // request is in flight (no skeletons, no selection clear, no scroll
-      // jump). This is what we want after every transfer / delete / rename
-      // — re-rendering the skeleton there caused the table to visibly
-      // blank on every queued operation and made bulk actions feel like
-      // they were flashing the UI.
-      // A hard refresh (initial mount, prefix change, manual reload) still
-      // clears state so the user sees that something is happening.
-      if (background) {
-        setListing((s) => ({ ...s, loading: true, error: null }));
-      } else {
-        setListing((s) => ({ ...s, loading: true, error: null }));
-        setSelection(new Set());
-        setContentTypes({});
-      }
-      try {
-        const page = await listObjects(connId, bucket, prefix);
+      const token = Symbol();
+      fetchTokenRef.current = token;
+      return listObjects(connId, bucket, prefix).then((page) => {
         if (token !== fetchTokenRef.current) return;
         setListing({
           folders: page.folders,
@@ -533,26 +521,34 @@ export default function ObjectBrowser() {
               /* leave placeholder */
             });
         }
-      } catch (err) {
+      }).catch((err) => {
         if (token !== fetchTokenRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
         setListing((s) => ({ ...s, loading: false, error: msg }));
         toast.error(`Failed to list objects: ${msg}`);
-      }
+      });
     },
     [connId, bucket, prefix],
   );
 
-  // Memoised wrappers so callers don't need to remember to pass `background`.
-  const hardRefresh = React.useCallback(() => fetchListing(), [fetchListing]);
-  const softRefresh = React.useCallback(
-    () => fetchListing({ background: true }),
-    [fetchListing],
-  );
+  // User-triggered reloads clear selection; transfer updates keep it intact.
+  const hardRefresh = React.useCallback(() => {
+    if (!connId || !bucket) return;
+    setListing((s) => ({ ...s, loading: true, error: null }));
+    setSelection(new Set());
+    setContentTypes({});
+    return loadListing();
+  }, [connId, bucket, loadListing]);
+  const softRefresh = React.useCallback(() => {
+    if (!connId || !bucket) return;
+    setListing((s) => ({ ...s, loading: true, error: null }));
+    return loadListing();
+  }, [connId, bucket, loadListing]);
 
   React.useEffect(() => {
-    fetchListing();
-  }, [fetchListing]);
+    void loadListing();
+    return () => { fetchTokenRef.current = null; };
+  }, [loadListing]);
 
   // Auto-refresh the listing whenever an upload or copy that lands inside
   // the currently-open bucket+prefix finishes. Without this, dropping a file

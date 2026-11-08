@@ -32,19 +32,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: ESLint
-        # Existing lint errors are tracked separately from dependency upgrades.
-        continue-on-error: true
-        run: pnpm lint
-
-      - name: Vitest (frontend unit tests)
-        # Critical-path tests for the Tauri IPC bridge, mime helpers, app
-        # store navigation, copy-to safety guard and the secret-leak
-        # invariants. These are required to pass before any release builds.
-        run: pnpm test
-
-      - name: TypeScript / Next build
-        run: pnpm build
+      - name: Frontend checks (ESLint, Vitest, TypeScript / Next build)
+        # Shared with pnpm check so local validation matches CI.
+        run: bash scripts/check.sh frontend
 
   backend:
     name: Rust backend (cargo check + tests)
@@ -60,10 +50,6 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
-      - name: cargo check
-        run: cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets
-
-      - name: cargo test
-        # Backend unit tests (connections + S3 helpers + key validation).
-        # These are required to pass before any release workflow runs.
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-fail-fast
+      - name: Backend checks (cargo check + tests)
+        # Shared with pnpm check; no Node installation needed for this job.
+        run: bash scripts/check.sh backend

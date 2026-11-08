@@ -110,14 +110,24 @@ interface Props {
   objectKey: string;
 }
 
-export function FilePreviewModal({
+export function FilePreviewModal(props: Props) {
+  if (!props.open) return null;
+  return (
+    <FilePreview
+      key={JSON.stringify([props.connectionId, props.bucket, props.objectKey])}
+      {...props}
+    />
+  );
+}
+
+function FilePreview({
   open,
   onClose,
   connectionId,
   bucket,
   objectKey,
 }: Props) {
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [preview, setPreview] = React.useState<ObjectPreview | null>(null);
   const [presigned, setPresigned] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -126,11 +136,7 @@ export function FilePreviewModal({
   const kind = detectKind(objectKey, preview?.content_type ?? null);
 
   React.useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    setPreview(null);
-    setPresigned(null);
-    setError(null);
+    let active = true;
 
     const e = ext(objectKey);
     const wantsMedia =
@@ -148,12 +154,16 @@ export function FilePreviewModal({
         : Promise.resolve<string | null>(null),
     ])
       .then(([p, u]) => {
+        if (!active) return;
         if (p.status === "fulfilled") setPreview(p.value);
         else setError(String((p as PromiseRejectedResult).reason));
         if (u.status === "fulfilled" && u.value) setPresigned(u.value);
       })
-      .finally(() => setLoading(false));
-  }, [open, connectionId, bucket, objectKey]);
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [connectionId, bucket, objectKey]);
 
   const renderBody = () => {
     if (loading) {
@@ -172,8 +182,8 @@ export function FilePreviewModal({
     }
 
     if (kind === "image" && presigned) {
-      // eslint-disable-next-line @next/next/no-img-element
       return (
+        // eslint-disable-next-line @next/next/no-img-element -- Preview remote object bytes directly in the desktop app.
         <img
           src={presigned}
           alt={fileName}
@@ -183,8 +193,8 @@ export function FilePreviewModal({
     }
     if (kind === "image" && preview) {
       const ct = preview.content_type ?? "image/png";
-      // eslint-disable-next-line @next/next/no-img-element
       return (
+        // eslint-disable-next-line @next/next/no-img-element -- Preview the inline object bytes without image optimization.
         <img
           src={`data:${ct};base64,${preview.body_b64}`}
           alt={fileName}

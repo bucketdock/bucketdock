@@ -227,6 +227,31 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 ### Tests
 
+Before handing off changes or pushing, stop any development server and run:
+
+```bash
+pnpm check
+```
+
+This installs dependencies from the frozen lockfile and runs the same frontend
+and backend checks as GitHub's smoke workflow. Both use `scripts/check.sh`, and
+any failed check stops the command with a nonzero exit code. Run this on macOS
+with the project's pinned pnpm version, Node 22, Rust, and Xcode command-line
+tools installed.
+
+For changes to dependencies, build configuration, Rust, packaging, or workflows,
+run the full release check instead:
+
+```bash
+pnpm check:release
+```
+
+It includes all smoke checks, installs the Rust targets if needed, and builds
+unsigned Apple Silicon and Intel `.app`/`.dmg` bundles sequentially in CI mode.
+It does not publish anything or validate signing, notarization, GitHub access,
+or live S3 operations. These commands must be run explicitly; no Git hook is
+installed automatically.
+
 The project ships two suites that both run in CI before any release build:
 
 ```bash
@@ -239,6 +264,16 @@ pnpm test
 # keychain service / bundle account constants.
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+CI also requires `pnpm lint` (zero errors and zero warnings) and `pnpm build`.
+The Next.js build is a separate check and does not replace ESLint. A lint
+failure blocks the smoke workflow and the dependent release jobs.
+
+Release Please opens a version/changelog PR from changes on `main`. Merging
+that PR allows the release workflow to create the release and build the macOS
+packages. The workflow YAML has no manual approval or environment gate;
+GitHub review requirements and workflow-run approvals are repository or
+organization settings, separate from this release-PR flow.
 
 ## Provider Setup
 

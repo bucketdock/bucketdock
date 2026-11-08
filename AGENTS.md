@@ -23,9 +23,21 @@ BucketDock is a macOS app with a Next.js 16 App Router frontend in `src/` and a 
 
 ## Validation
 
-- `cargo check --manifest-path src-tauri/Cargo.toml`
-- `cargo test --manifest-path src-tauri/Cargo.toml`
-- `pnpm test`
-- `pnpm tauri dev`
-- `pnpm dev --port 1420`
+- Before handing off code changes, and before any separately authorized commit
+  or push, run `pnpm check` and fix failures. This installs the frozen lockfile,
+  runs ESLint with zero warnings, frontend tests, the production build including
+  TypeScript, and locked Rust checks for all targets and backend tests.
+- For changes to dependencies, build configuration, Rust code, packaging, or
+  GitHub workflows, run `pnpm check:release` instead. It includes `pnpm check`
+  and builds unsigned app/DMG bundles for both Apple Silicon and Intel macOS.
+- Stop development servers before these checks: development and production
+  builds share generated output. Run checks sequentially with packaging.
+- `scripts/check.sh` is shared with `.github/workflows/smoke.yml`. Keep local
+  and CI validation in sync; never bypass a failing check with
+  `continue-on-error` or by disabling lint rules to make CI green.
+- Report the checks actually completed and any environment blockers. Local
+  validation does not verify GitHub permissions, publishing, Apple signing,
+  notarization, or live storage-provider behavior.
+- Use `pnpm tauri dev` for desktop interaction checks and `pnpm dev --port 1420`
+  for frontend-only checks when relevant to the change.
 <!-- END:nextjs-agent-rules -->

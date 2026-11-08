@@ -10,8 +10,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
+    "check": "bash scripts/check.sh",
+    "check:release": "bash scripts/check.sh release",
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri"

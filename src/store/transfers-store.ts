@@ -8,7 +8,6 @@ import {
   downloadFileTracked,
   copyObjectTracked,
   deleteObject,
-  deleteObjects,
   deletePrefix,
   deleteTracked,
 } from "@/lib/tauri";

@@ -40,6 +40,10 @@ function isLikelyScopedCredsError(msg: string): boolean {
  * same failure to avoid duplicated nag.
  */
 export default function BucketsPane({ connectionId }: BucketsPaneProps) {
+  return <ConnectionBuckets key={connectionId} connectionId={connectionId} />;
+}
+
+function ConnectionBuckets({ connectionId }: BucketsPaneProps) {
   const buckets = useAppStore((s) => s.buckets[connectionId]);
   const setBuckets = useAppStore((s) => s.setBuckets);
   const selectBucket = useAppStore((s) => s.selectBucket);
@@ -47,34 +51,34 @@ export default function BucketsPane({ connectionId }: BucketsPaneProps) {
     s.connections.find((c) => c.id === connectionId),
   );
 
-  const [loading, setLoading] = React.useState(false);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [editOpen, setEditOpen] = React.useState(false);
+  const loading = refreshing || (!buckets && !error && isTauri());
 
-  const refresh = React.useCallback(async () => {
+  const loadBuckets = React.useCallback(() => {
     if (!isTauri()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const list = await listBuckets(connectionId);
-      setBuckets(connectionId, list);
-    } catch (e) {
-      setError(typeof e === "string" ? e : (e as Error).message);
-    } finally {
-      setLoading(false);
-    }
+    return listBuckets(connectionId)
+      .then((list) => {
+        setBuckets(connectionId, list);
+        setError(null);
+      })
+      .catch((e) => {
+        setError(typeof e === "string" ? e : (e as Error).message);
+      })
+      .finally(() => setRefreshing(false));
   }, [connectionId, setBuckets]);
 
-  // Reset error when switching connections so a previous failure doesn't
-  // leak into the next connection's pane while its first listBuckets is
-  // still in flight.
-  React.useEffect(() => {
+  function refresh() {
+    if (!isTauri()) return;
+    setRefreshing(true);
     setError(null);
-  }, [connectionId]);
+    void loadBuckets();
+  }
 
   React.useEffect(() => {
-    if (!buckets) refresh();
-  }, [buckets, refresh]);
+    if (!buckets) void loadBuckets();
+  }, [buckets, loadBuckets]);
 
   const hasBucketFilter = !!connection?.bucket_filter?.trim();
   const scopedHint =

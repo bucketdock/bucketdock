@@ -37,7 +37,7 @@ export default function DeleteConnectionConfirm({ open, onClose, connection }: P
       <div className="flex flex-col gap-5">
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
           Delete connection{' '}
-          <span className="font-semibold text-foreground">"{connection?.name}"</span>?{' '}
+          <span className="font-semibold text-foreground">&quot;{connection?.name}&quot;</span>?{' '}
           Stored credentials will be removed from your keychain.
         </p>
         <div className="flex justify-end gap-2">

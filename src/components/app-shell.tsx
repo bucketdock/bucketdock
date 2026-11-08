@@ -6,15 +6,30 @@ import ObjectBrowser from "./object-browser";
 import TransferQueue from "./transfer-queue";
 import { isTauri, listConnections } from "@/lib/tauri";
 import { useAppStore } from "@/store/app-store";
+import { useHydrated } from "@/lib/use-hydrated";
 
 const SIDEBAR_KEY = "bucketdock.sidebarWidth";
 const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 520;
 const SIDEBAR_DEFAULT = 260;
 
+function readSidebarWidth(): number {
+  try {
+    const n = parseInt(localStorage.getItem(SIDEBAR_KEY) ?? "", 10);
+    if (Number.isFinite(n)) {
+      return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n));
+    }
+  } catch {
+    // Storage may be unavailable; keep the default width.
+  }
+  return SIDEBAR_DEFAULT;
+}
+
 export default function AppShell() {
   const setConnections = useAppStore((s) => s.setConnections);
-  const [sidebarWidth, setSidebarWidth] = React.useState(SIDEBAR_DEFAULT);
+  const hydrated = useHydrated();
+  const [resizedWidth, setSidebarWidth] = React.useState<number | null>(null);
+  const sidebarWidth = resizedWidth ?? (hydrated ? readSidebarWidth() : SIDEBAR_DEFAULT);
   const [dragging, setDragging] = React.useState(false);
 
   React.useEffect(() => {
@@ -25,20 +40,6 @@ export default function AppShell() {
         /* silently ignore */
       });
   }, [setConnections]);
-
-  // Restore persisted width
-  React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SIDEBAR_KEY);
-      if (raw) {
-        const n = parseInt(raw, 10);
-        if (Number.isFinite(n))
-          setSidebarWidth(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n)));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   // Drag handler
   React.useEffect(() => {

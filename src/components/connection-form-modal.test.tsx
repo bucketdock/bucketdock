@@ -54,6 +54,63 @@ function renderCreateModal(onClose = vi.fn()) {
 }
 
 describe("ConnectionFormModal", () => {
+  it("preserves saved provider settings and clears unsaved credentials on reopen", async () => {
+    const user = userEvent.setup();
+    const initial = {
+      id: "custom-1",
+      name: "Existing",
+      provider: "custom" as const,
+      endpoint: "https://storage.example.com",
+      region: "eu-central-1",
+      access_key_id: "AKIA",
+      bucket_filter: null,
+    };
+    const props = { onClose: vi.fn(), initial };
+    const { rerender } = render(<ConnectionFormModal open {...props} />);
+
+    expect(screen.getByRole("textbox", { name: /Region/i })).toHaveValue("eu-central-1");
+    await user.type(screen.getByLabelText(/Secret Access Key/i, { selector: "input" }), "unsaved-secret");
+    await user.clear(screen.getByLabelText("Name *"));
+    await user.type(screen.getByLabelText("Name *"), "Unsaved name");
+
+    rerender(<ConnectionFormModal open={false} {...props} />);
+    rerender(<ConnectionFormModal open {...props} />);
+
+    expect(screen.getByLabelText("Name *")).toHaveValue("Existing");
+    expect(screen.getByLabelText(/Secret Access Key/i, { selector: "input" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: /Region/i })).toHaveValue("eu-central-1");
+  });
+
+  it("updates region and R2 endpoint from input changes while allowing a custom endpoint", async () => {
+    const user = userEvent.setup();
+    renderCreateModal();
+    await user.selectOptions(screen.getByLabelText("Provider *"), "r2");
+    expect(screen.getByRole("textbox", { name: /Region/i })).toHaveValue("auto");
+    await user.type(screen.getByLabelText("Account ID"), "account123");
+    const endpoint = screen.getByRole("textbox", { name: /Endpoint/i });
+    expect(endpoint).toHaveValue("https://account123.r2.cloudflarestorage.com");
+
+    await user.clear(endpoint);
+    await user.type(endpoint, "https://account123.eu.r2.cloudflarestorage.com");
+    await user.type(screen.getByLabelText("Name *"), "R2 EU");
+    expect(endpoint).toHaveValue("https://account123.eu.r2.cloudflarestorage.com");
+
+    await user.selectOptions(screen.getByLabelText("Provider *"), "aws");
+    expect(screen.getByRole("textbox", { name: /Region/i })).toHaveValue("us-east-1");
+  });
+
+  it("loads a different connection when the edit target changes while open", () => {
+    const initial = {
+      id: "c1", name: "First", provider: "aws" as const,
+      endpoint: null, region: "eu-west-1", access_key_id: "KEY1", bucket_filter: null,
+    };
+    const onClose = vi.fn();
+    const { rerender } = render(<ConnectionFormModal open onClose={onClose} initial={initial} />);
+    rerender(<ConnectionFormModal open onClose={onClose} initial={{ ...initial, id: "c2", name: "Second", region: "eu-west-2" }} />);
+    expect(screen.getByLabelText("Name *")).toHaveValue("Second");
+    expect(screen.getByRole("textbox", { name: /Region/i })).toHaveValue("eu-west-2");
+  });
+
   it("creates a connection, trims input, and updates local store", async () => {
     const user = userEvent.setup();
     const created = {
