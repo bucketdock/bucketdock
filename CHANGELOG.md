@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.15](https://github.com/bucketdock/bucketdock/compare/v0.1.14...v0.1.15) (2026-11-08)
+
+
+### Bug Fixes
+
+* add more regression tests ([3e726d7](https://github.com/bucketdock/bucketdock/commit/3e726d793c4a3aeb62f6603df908f3d4c1857867))
+* keep previous smoke.yml github workflow ([5840804](https://github.com/bucketdock/bucketdock/commit/5840804b451fbba31e6817f302b3f1caa10429b3))
+* resolve lint errors and enforce ci checks ([7238ea2](https://github.com/bucketdock/bucketdock/commit/7238ea2aa9dc15098c77a17dbdb7489e25b514e3))
+* resolve lint errors and enforce ci checks ([587b66d](https://github.com/bucketdock/bucketdock/commit/587b66d02482c812ba5cbf6ec896dc2350c26903))
+* update dependencies to resolve security vulnerabilities ([5581522](https://github.com/bucketdock/bucketdock/commit/55815225717ac5eb773ad84ac60536f4ec38a436))
+* update dependencies to resolve security vulnerabilities ([2767994](https://github.com/bucketdock/bucketdock/commit/2767994faea8ef559035d715dfb8f9d2690140ed))
+
 ## [0.1.14](https://github.com/bucketdock/bucketdock/compare/v0.1.13...v0.1.14) (2026-09-21)
 
 
