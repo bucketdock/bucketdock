@@ -234,8 +234,9 @@ pnpm check
 ```
 
 This installs dependencies from the frozen lockfile and runs the same frontend
-and backend checks as GitHub's smoke workflow. Both use `scripts/check.sh`, and
-any failed check stops the command with a nonzero exit code. Run this on macOS
+and backend commands as GitHub's smoke workflow. The local `scripts/check.sh`
+groups them into one command; GitHub shows each check as a separate named step.
+Any failed check stops the command with a nonzero exit code. Run this on macOS
 with the project's pinned pnpm version, Node 22, Rust, and Xcode command-line
 tools installed.
 
