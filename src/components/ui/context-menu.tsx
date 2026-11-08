@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/cn';
+import { useHydrated } from '@/lib/use-hydrated';
 
 export interface ContextMenuItem {
   label: string;
@@ -23,8 +24,7 @@ export interface ContextMenuProps {
 
 export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
   const ref = React.useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
+  const mounted = useHydrated();
 
   React.useEffect(() => {
     if (!position) return;

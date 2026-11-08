@@ -25,8 +25,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 ** 4).toFixed(1)} TB`;
 }
 
-const META_KEY_RE = /^[a-z][a-z0-9-]{0,63}$/; // eslint-disable-line @typescript-eslint/no-unused-vars
-
 function validateMetaKey(k: string): string | null {
   if (!k) return "Key is required";
   if (!/^[a-z]/.test(k)) return "Must start with a lowercase letter";
@@ -56,7 +54,17 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function ObjectInfoModal({
+export function ObjectInfoModal(props: Props) {
+  if (!props.open || !props.objectKey) return null;
+  return (
+    <ObjectInfo
+      key={JSON.stringify([props.connectionId, props.bucket, props.objectKey])}
+      {...props}
+    />
+  );
+}
+
+function ObjectInfo({
   open,
   onClose,
   connectionId,
@@ -65,7 +73,7 @@ export function ObjectInfoModal({
   onSaved,
   mode = "info",
 }: Props) {
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [metadata, setMetadata] = React.useState<ObjectMetadata | null>(null);
 
@@ -81,15 +89,17 @@ export function ObjectInfoModal({
   const [metaRows, setMetaRows] = React.useState<MetaRow[]>([]);
 
   const fileName = objectKey.split("/").filter(Boolean).pop() ?? objectKey;
+  const onLoadError = React.useEffectEvent((err: unknown) => {
+    toast.error(`Failed to load metadata: ${err}`);
+    onClose();
+  });
 
   // Load on open
   React.useEffect(() => {
-    if (!open || !objectKey) return;
-    setLoading(true);
-    setMetadata(null);
-    setMetaRows([]);
+    let active = true;
     getObjectMetadata(connectionId, bucket, objectKey)
       .then((m) => {
+        if (!active) return;
         setMetadata(m);
         setContentType(m.content_type ?? "");
         setCacheControl(m.cache_control ?? "");
@@ -104,11 +114,13 @@ export function ObjectInfoModal({
         setMetaRows(rows);
       })
       .catch((err) => {
-        toast.error(`Failed to load metadata: ${err}`);
-        onClose();
+        if (active) onLoadError(err);
       })
-      .finally(() => setLoading(false));
-  }, [open, objectKey]); // eslint-disable-line react-hooks/exhaustive-deps
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [connectionId, bucket, objectKey]);
 
   const addRow = () => {
     setMetaRows((rows) => [

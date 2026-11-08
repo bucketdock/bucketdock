@@ -29,66 +29,46 @@ interface Props {
   initial?: Connection;
 }
 
-export default function ConnectionFormModal({ open, onClose, initial }: Props) {
+export default function ConnectionFormModal(props: Props) {
+  if (!props.open) return null;
+  return <ConnectionForm key={props.initial?.id ?? "new"} {...props} />;
+}
+
+function ConnectionForm({ open, onClose, initial }: Props) {
   const isEdit = !!initial;
 
-  const [name, setName] = React.useState("");
-  const [provider, setProvider] = React.useState<Provider>("aws");
-  const [region, setRegion] = React.useState("us-east-1");
-  const [endpoint, setEndpoint] = React.useState("");
-  const [r2AccountId, setR2AccountId] = React.useState("");
-  const [accessKeyId, setAccessKeyId] = React.useState("");
+  const [name, setName] = React.useState(initial?.name ?? "");
+  const [provider, setProvider] = React.useState<Provider>(initial?.provider ?? "aws");
+  const [region, setRegion] = React.useState(initial?.region ?? "us-east-1");
+  const [endpoint, setEndpoint] = React.useState(initial?.endpoint ?? "");
+  const [r2AccountId, setR2AccountId] = React.useState(() => {
+    const match = (initial?.endpoint ?? "").match(
+      /^https?:\/\/([^.]+)\.r2\.cloudflarestorage\.com/i,
+    );
+    return match?.[1] ?? "";
+  });
+  const [accessKeyId, setAccessKeyId] = React.useState(initial?.access_key_id ?? "");
+  // Secrets are never returned to the UI. Empty submit keeps the saved secret.
   const [secretAccessKey, setSecretAccessKey] = React.useState("");
-  const [bucketFilter, setBucketFilter] = React.useState("");
+  const [bucketFilter, setBucketFilter] = React.useState(initial?.bucket_filter ?? "");
 
   const [saving, setSaving] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
 
-  // Populate form when modal opens
-  React.useEffect(() => {
-    if (!open) return;
-    if (initial) {
-      setName(initial.name);
-      setProvider(initial.provider);
-      setRegion(initial.region);
-      setEndpoint(initial.endpoint ?? "");
-      // Parse R2 account id back out of the saved endpoint
-      const r2Match = (initial.endpoint ?? "").match(
-        /^https?:\/\/([^.]+)\.r2\.cloudflarestorage\.com/i,
-      );
-      setR2AccountId(r2Match ? r2Match[1] : "");
-      setAccessKeyId(initial.access_key_id);
-      // Secret is intentionally blank — it lives in the macOS Keychain and is
-      // never sent back to the UI. Empty submit = keep existing.
-      setSecretAccessKey("");
-      setBucketFilter(initial.bucket_filter ?? "");
-    } else {
-      setName("");
-      setProvider("aws");
-      setRegion("us-east-1");
-      setEndpoint("");
-      setR2AccountId("");
-      setAccessKeyId("");
-      setSecretAccessKey("");
-      setBucketFilter("");
-    }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Update default region when provider changes (only for new connections)
-  const prevProvider = React.useRef(provider);
-  React.useEffect(() => {
-    if (prevProvider.current === provider) return;
-    prevProvider.current = provider;
-    if (provider === "r2") setRegion("auto");
-    else setRegion("us-east-1");
-  }, [provider]);
-
-  // Auto-build R2 endpoint from account ID
-  React.useEffect(() => {
-    if (provider === "r2" && r2AccountId.trim()) {
+  function changeProvider(next: Provider) {
+    setProvider(next);
+    setRegion(next === "r2" ? "auto" : "us-east-1");
+    if (next === "r2" && r2AccountId.trim()) {
       setEndpoint(`https://${r2AccountId.trim()}.r2.cloudflarestorage.com`);
     }
-  }, [r2AccountId, provider]);
+  }
+
+  function changeR2AccountId(value: string) {
+    setR2AccountId(value);
+    if (value.trim()) {
+      setEndpoint(`https://${value.trim()}.r2.cloudflarestorage.com`);
+    }
+  }
 
   const showEndpoint =
     provider === "r2" || provider === "hetzner" || provider === "custom";
@@ -200,7 +180,7 @@ export default function ConnectionFormModal({ open, onClose, initial }: Props) {
           <Select
             id="conn-provider"
             value={provider}
-            onChange={(e) => setProvider(e.target.value as Provider)}
+            onChange={(e) => changeProvider(e.target.value as Provider)}
           >
             <option value="aws">AWS S3</option>
             <option value="r2">Cloudflare R2</option>
@@ -231,7 +211,7 @@ export default function ConnectionFormModal({ open, onClose, initial }: Props) {
                 <Input
                   id="conn-account-id"
                   value={r2AccountId}
-                  onChange={(e) => setR2AccountId(e.target.value)}
+                  onChange={(e) => changeR2AccountId(e.target.value)}
                   placeholder="abcdef1234567890abcdef1234567890"
                 />
               </div>

@@ -19,10 +19,34 @@ BucketDock is a macOS app with a Next.js 16 App Router frontend in `src/` and a 
 - The object browser Type column shows the real `Content-Type` returned by a per-file HEAD request (batched, concurrency-limited in `commands_s3::head_object_content_types`); it falls back to the extension-based default while requests are in flight.
 - If a saved connection behaves differently from a form test, inspect keychain persistence before changing S3 logic.
 
+## Readability and Review
+
+- Apply YAGNI (You Aren't Gonna Need It): implement only current requirements.
+  Do not add speculative features, configuration, dependencies, or abstractions
+  for hypothetical future needs.
+- Keep changes focused and easy to review; avoid unrelated cleanup.
+- Prefer descriptive names and straightforward code over unnecessary wrappers
+  or abstractions. Keep individual CI checks visible as named workflow steps.
+- Explain non-obvious decisions with concise comments. Review the final diff
+  and summarize what changed, why, and how it was verified.
+
 ## Validation
 
-- `cargo check --manifest-path src-tauri/Cargo.toml`
-- `cargo test --manifest-path src-tauri/Cargo.toml`
-- `pnpm test`
-- `pnpm tauri dev`
-- `pnpm dev --port 1420`
+- Before handing off code changes, and before any separately authorized commit
+  or push, run `pnpm check` and fix failures. This installs the frozen lockfile,
+  runs ESLint with zero warnings, frontend tests, the production build including
+  TypeScript, and locked Rust checks for all targets and backend tests.
+- For changes to dependencies, build configuration, Rust code, packaging, or
+  GitHub workflows, run `pnpm check:release` instead. It includes `pnpm check`
+  and builds unsigned app/DMG bundles for both Apple Silicon and Intel macOS.
+- Stop development servers before these checks: development and production
+  builds share generated output. Run checks sequentially with packaging.
+- `.github/workflows/smoke.yml` keeps each check in a separately named step.
+  Keep its commands and flags in sync with `scripts/check.sh` whenever either
+  changes; never bypass a failing check with
+  `continue-on-error` or by disabling lint rules to make CI green.
+- Report the checks actually completed and any environment blockers. Local
+  validation does not verify GitHub permissions, publishing, Apple signing,
+  notarization, or live storage-provider behavior.
+- Use `pnpm tauri dev` for desktop interaction checks and `pnpm dev --port 1420`
+  for frontend-only checks when relevant to the change.

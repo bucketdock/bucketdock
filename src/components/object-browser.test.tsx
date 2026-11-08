@@ -166,6 +166,45 @@ describe("folderDisplayName", () => {
 });
 
 describe("ObjectBrowser top toolbar", () => {
+  it("clears old rows and expanded folders while a new bucket loads", async () => {
+    const user = userEvent.setup();
+    render(<ObjectBrowser />);
+    await user.click(await screen.findByTestId("disclosure-photos/"));
+    await screen.findByText("cover.jpg");
+
+    let resolveListing!: (page: { folders: string[]; files: [] }) => void;
+    listObjectsMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveListing = resolve;
+    }));
+    await act(async () => {
+      useAppStore.getState().selectBucket("other-bucket");
+    });
+    expect(screen.queryByText("report.pdf")).not.toBeInTheDocument();
+    expect(screen.queryByText("cover.jpg")).not.toBeInTheDocument();
+
+    await act(async () => { resolveListing({ folders: ["photos/"], files: [] }); });
+    expect(await screen.findByTestId("disclosure-photos/")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("cover.jpg")).not.toBeInTheDocument();
+  });
+
+  it("ignores a failed listing from a bucket that is no longer selected", async () => {
+    let rejectListing!: (error: Error) => void;
+    listObjectsMock.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectListing = reject;
+    }));
+    render(<ObjectBrowser />);
+    await act(async () => {
+      useAppStore.getState().selectBucket(null);
+    });
+    await act(async () => { rejectListing(new Error("outdated listing")); });
+    expect(toastErrorMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      useAppStore.getState().selectBucket("other-bucket");
+    });
+    expect(await screen.findByText("report.pdf")).toBeInTheDocument();
+  });
+
   it("shows back and forward buttons that are disabled at history root", async () => {
     render(<ObjectBrowser />);
     await screen.findByRole("button", { name: "Back" });

@@ -62,7 +62,7 @@ function pushHistory(
 
 export const useAppStore = create<AppStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       connections: [],
       selectedConnectionId: null,
       selectedBucket: null,

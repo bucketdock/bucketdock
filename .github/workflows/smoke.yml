@@ -33,8 +33,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: ESLint
-        # Existing lint errors are tracked separately from dependency upgrades.
-        continue-on-error: true
+        # Lint errors and warnings must block builds and releases.
         run: pnpm lint
 
       - name: Vitest (frontend unit tests)
