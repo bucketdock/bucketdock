@@ -1,5 +1,3 @@
-<!-- BEGIN:nextjs-agent-rules -->
-
 # BucketDock Agent Notes
 
 BucketDock is a macOS app with a Next.js 16 App Router frontend in `src/` and a Tauri 2 / Rust backend in `src-tauri/`.
@@ -52,4 +50,3 @@ BucketDock is a macOS app with a Next.js 16 App Router frontend in `src/` and a 
   notarization, or live storage-provider behavior.
 - Use `pnpm tauri dev` for desktop interaction checks and `pnpm dev --port 1420`
   for frontend-only checks when relevant to the change.
-<!-- END:nextjs-agent-rules -->
